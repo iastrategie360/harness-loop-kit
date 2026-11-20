@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# Faux relecteur pour les tests : il imite la surface du CLI que le harness utilise, sans
+# réseau ni modèle. Piloté par des variables d'environnement :
+#
+#   FAUX_CODEX_MODE    propre (défaut) | findings | bloquant | vide | ecrit | echec-auth |
+#                      echec-quota | lent | non-authentifie | prose-sans-fin | refus
+#   FAUX_CODEX_SORTIE  fichier recopié comme dernier message (prime sur le mode)
+#   FAUX_CODEX_JSONL   fichier recopié comme flux d'événements (prime sur le mode)
+#   FAUX_CODEX_TRACE   fichier où chaque appel consigne ses arguments, un par ligne
+#
+# Il REFUSE (code 9) tout appel de relecture qui n'impose pas la lecture seule : un script du
+# harness qui l'oublierait fait donc rougir les tests.
+set -u
+mode="${FAUX_CODEX_MODE:-propre}"
+
+if [[ -n "${FAUX_CODEX_TRACE:-}" ]]; then
+  { echo "--- appel"; printf '%s\n' "$@"; } >> "$FAUX_CODEX_TRACE"
+fi
+
+if [[ "${1:-}" == "--version" ]]; then
+  echo "codex-cli 0.0.0-faux"
+  exit 0
+fi
+if [[ "${1:-}" == "login" && "${2:-}" == "status" ]]; then
+  if [[ "$mode" == "non-authentifie" ]]; then
+    echo "Not logged in" >&2
+    exit 1
+  fi
+  echo "Logged in (faux)"
+  exit 0
+fi
+
+sortie="" schema="" racine="" review=0 lecture_seule=0 exec_vu=0
+args=("$@")
+i=0
+while ((i < ${#args[@]})); do
+  a="${args[i]}"
+  case "$a" in
+    exec) exec_vu=1 ;;
+    review) review=1 ;;
+    -o) i=$((i + 1)); sortie="${args[i]}" ;;
+    --output-schema) i=$((i + 1)); schema="${args[i]}" ;;
+    -C) i=$((i + 1)); racine="${args[i]}" ;;
+    -s) i=$((i + 1)); [[ "${args[i]}" == "read-only" ]] && lecture_seule=1 ;;
+    -c) i=$((i + 1)); [[ "${args[i]}" == 'sandbox_mode="read-only"' ]] && lecture_seule=1 ;;
+    -m | --base) i=$((i + 1)) ;;
+  esac
+  i=$((i + 1))
+done
+
+if ((!exec_vu)); then
+  echo "faux codex : appel non prévu : $*" >&2
+  exit 9
+fi
+if ((!lecture_seule)); then
+  echo "faux codex : appel SANS lecture seule : $*" >&2
+  exit 9
+fi
+
+flux_complet() {
+  echo '{"type":"thread.started","thread_id":"faux"}'
+  echo '{"type":"turn.started"}'
+  echo '{"type":"item.completed","item":{"type":"command_execution","command":"git diff --stat","aggregated_output":"","exit_code":0,"status":"completed"}}'
+  echo '{"type":"item.completed","item":{"type":"agent_message","text":"relecture terminée"}}'
+  echo '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
+}
+
+# Un relecteur qui finit son tour sans avoir rien pu lire : une commande en échec, puis un refus.
+flux_refus() {
+  echo '{"type":"thread.started","thread_id":"faux"}'
+  echo '{"type":"turn.started"}'
+  echo '{"type":"item.completed","item":{"type":"command_execution","command":"git diff --stat","aggregated_output":"fatal: not a git repository","exit_code":128,"status":"failed"}}'
+  echo '{"type":"item.completed","item":{"type":"agent_message","text":"refus"}}'
+  echo '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
+}
+
+case "$mode" in
+  echec-auth)
+    echo '{"type":"thread.started","thread_id":"faux"}'
+    echo "ERROR: unexpected status 401 Unauthorized: token expired" >&2
+    exit 1
+    ;;
+  echec-quota)
+    echo '{"type":"error","message":"You have hit your usage limit"}'
+    exit 1
+    ;;
+  lent)
+    exec sleep 30
+    exit 0
+    ;;
+  vide)
+    flux_complet
+    [[ -n "$sortie" ]] && : > "$sortie"
+    exit 0
+    ;;
+  ecrit)
+    # Un relecteur qui « vérifie » en modifiant l'arbre de travail.
+    echo "modifié par le relecteur" >> "${racine:-.}/README.md"
+    ;;
+esac
+
+if [[ -n "${FAUX_CODEX_JSONL:-}" ]]; then
+  cat "$FAUX_CODEX_JSONL"
+elif [[ "$mode" == "prose-sans-fin" ]]; then
+  echo '{"type":"thread.started","thread_id":"faux"}'
+  echo '{"type":"turn.started"}'
+elif [[ "$mode" == "refus" ]]; then
+  flux_refus
+else
+  flux_complet
+fi
+
+[[ -n "$sortie" ]] || exit 0
+if [[ -n "${FAUX_CODEX_SORTIE:-}" ]]; then
+  cat "$FAUX_CODEX_SORTIE" > "$sortie"
+  exit 0
+fi
+
+if ((review)); then
+  case "$mode" in
+    findings)
+      cat > "$sortie" <<'JSON'
+{"findings":[
+ {"priority":"P1","title":"La garde laisse passer une valeur vide","body":"Le test porte sur la présence, pas sur le contenu.","file":"src/garde.py","line_start":12,"line_end":14},
+ {"priority":"P3","title":"Nom de variable ambigu","body":"Renommer.","file":"src/garde.py","line_start":3,"line_end":3}
+],"overall_explanation":"Un défaut bloquant."}
+JSON
+      ;;
+    prose-sans-fin) echo "I could not complete the review." > "$sortie" ;;
+    refus) echo "I could not review the changes because the repository could not be read." > "$sortie" ;;
+    *) echo "The changes look correct. I did not find any issue that needs to be fixed." > "$sortie" ;;
+  esac
+  exit 0
+fi
+
+case "$(basename "$schema")" in
+  challenge.json)
+    echo '{"verdict":"a_reviser","resume":"Un critère est flou.","findings":[{"severite":"majeur","titre":"Critère non vérifiable","detail":"Le critère 2 ne dit pas comment on le constate.","recommandation":"Nommer la commande et la sortie attendue."}],"questions_pour_humain":["Faut-il couvrir le cas hors ligne ?"]}' > "$sortie"
+    ;;
+  plan-review.json)
+    if [[ "$mode" == "bloquant" ]]; then
+      echo '{"verdict":"a_rejeter","critique_bloquant":true,"resume":"Le plan cite un fichier absent.","findings":[{"severite":"critique","titre":"Fichier inexistant","detail":"src/absent.py est cité.","recommandation":"Corriger le chemin."}]}' > "$sortie"
+    else
+      echo '{"verdict":"solide","critique_bloquant":false,"resume":"Plan cohérent avec le dépôt.","findings":[]}' > "$sortie"
+    fi
+    ;;
+  arbitration.json)
+    echo '{"verdict":"faux_positif","justification":"Le cas décrit est filtré en amont, src/garde.py ligne 4.","correctif_suggere":"","severite":null}' > "$sortie"
+    ;;
+  *) echo "réponse libre du faux relecteur" > "$sortie" ;;
+esac

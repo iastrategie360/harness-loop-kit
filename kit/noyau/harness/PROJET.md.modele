@@ -1,0 +1,57 @@
+# Le projet, pour les agents du harness
+
+<!-- Ce fichier est la PROSE du projet : ce qu'un agent doit savoir avant de toucher au dépôt
+     et qu'aucun fichier de code ne lui dira. Il appartient au projet, le kit ne le remplace
+     jamais. Les VALEURS (branches, commandes, seuils, chemins) vivent dans harness/projet.json
+     et ne se recopient pas ici : une valeur recopiée finit par mentir.
+
+     Court vaut mieux que complet : tous les agents lisent ce fichier à chaque appel.
+     Viser une à deux pages. -->
+
+## En trois phrases
+
+<Ce que fait le produit, pour qui, et où il en est : en construction, ouvert à des
+utilisateurs, vendu.>
+
+## Les utilisateurs
+
+<Qui s'en sert, dans quelle situation, avec quel niveau technique. C'est avec ces yeux que le
+stage REGARD lit un écran ou un message.>
+
+## Le vocabulaire
+
+| On dit | On ne dit pas | Pourquoi |
+|---|---|---|
+| <terme du métier> | <terme à éviter> | <...> |
+
+## La carte du dépôt
+
+<Dix lignes au plus : où est l'interface, où est la logique, où sont les données, où sont les
+tests. Les dossiers qu'on ne devine pas.>
+
+## Les environnements
+
+| Environnement | À quoi il sert | Ce que le harness a le droit d'y faire |
+|---|---|---|
+| local (le banc) | exercer une story | tout, dans les limites de la garde de production |
+| <partagé, préproduction> | <...> | <lecture seule, ou rien> |
+| production | les utilisateurs | rien |
+
+## Les pièges connus
+
+<!-- Ce qui a déjà coûté une demi-journée à quelqu'un. Une ligne par piège : le symptôme, la
+     cause, le geste juste. À compléter au fil des stories. -->
+
+- <Symptôme> : <cause>. <Geste juste.>
+
+## Ce qui ne se décide pas ici
+
+<Les sujets qui reviennent toujours à l'approbateur : prix, textes légaux, données
+personnelles, suppression de données, engagement envers un tiers. Les chemins correspondants
+sont dans `perimetres_interdits` de la configuration.>
+
+## Les décisions déjà prises
+
+<!-- Pour qu'un agent ne les remette pas sur la table. Une ligne chacune, datée. -->
+
+- <date> : <décision>, parce que <raison>.

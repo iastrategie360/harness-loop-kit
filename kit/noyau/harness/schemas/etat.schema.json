@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "État d'une story du harness (schéma 1)",
+  "description": "Clés fermées. Tout ce qui ne rentre dans aucune case va dans notes[] ou dans extensions{}. Écrit uniquement par harness/scripts/etat.mjs.",
+  "$defs": {
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}" },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["etat", "date", "par", "motif"],
+      "properties": {
+        "etat": { "enum": ["non_requise", "en_attente", "auto", "approuvee"] },
+        "date": { "anyOf": [{ "$ref": "#/$defs/date" }, { "type": "null" }] },
+        "par": { "type": ["string", "null"] },
+        "motif": { "type": ["string", "null"] }
+      }
+    },
+    "entree_datee": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "note"],
+      "properties": {
+        "date": { "$ref": "#/$defs/date" },
+        "stage": { "type": "string" },
+        "par": { "type": "string" },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["titre", "severite", "fichier", "survived", "escalation", "statut"],
+      "properties": {
+        "titre": { "type": "string", "minLength": 1 },
+        "severite": { "enum": ["P0", "P1", "P2"] },
+        "fichier": { "type": ["string", "null"] },
+        "survived": { "type": "integer", "minimum": 0 },
+        "escalation": { "enum": [null, "arbitre", "humain"] },
+        "statut": { "enum": ["ouvert", "corrige", "faux_positif", "tranche", "differe_valeur", "ecarte_valeur"] },
+        "note": { "type": "string" },
+        "valeur": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verdict", "date", "declencheur"],
+          "properties": {
+            "verdict": { "enum": ["ON_LE_NOTE", "ON_LE_JETTE"] },
+            "date": { "$ref": "#/$defs/date" },
+            "declencheur": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "story", "titre", "stage", "previous_stage", "branche", "rigueur", "rigueur_motif",
+    "regard_client", "perimetre", "depend_de", "tours", "max_tours", "echecs_consecutifs",
+    "dernier_pas_en_echec", "gates", "review_ledger", "escalations", "pr", "historique",
+    "blocages", "decisions", "notes", "extensions"
+  ],
+  "properties": {
+    "schema": { "const": 1 },
+    "story": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+    "titre": { "type": "string", "minLength": 1 },
+    "stage": {
+      "enum": [
+        "INIT", "SPEC", "CHALLENGE", "PLAN", "PLAN_REVIEW", "CODE", "QA", "PR", "REGARD", "NOTE", "DONE",
+        "waiting_gate_spec", "waiting_gate_plan", "waiting_gate_scope", "waiting_gate_arbitrage",
+        "waiting_gate_merge", "stopped_max_tours", "stopped_error"
+      ]
+    },
+    "previous_stage": {
+      "enum": [null, "INIT", "SPEC", "CHALLENGE", "PLAN", "PLAN_REVIEW", "CODE", "QA", "PR", "REGARD", "NOTE"]
+    },
+    "branche": { "type": ["string", "null"] },
+    "rigueur": { "enum": ["legere", "complete"] },
+    "rigueur_motif": { "type": ["string", "null"] },
+    "regard_client": { "type": "boolean" },
+    "perimetre": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "depend_de": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["story"],
+        "properties": {
+          "story": { "type": "string", "minLength": 1 },
+          "stage": { "type": "string" },
+          "gate": { "enum": ["spec", "plan", "scope", "arbitrage", "merge"] }
+        },
+        "oneOf": [{ "required": ["stage"] }, { "required": ["gate"] }]
+      }
+    },
+    "tours": { "type": "integer", "minimum": 0 },
+    "max_tours": { "type": "integer", "minimum": 1 },
+    "echecs_consecutifs": { "type": "integer", "minimum": 0 },
+    "dernier_pas_en_echec": { "type": ["string", "null"] },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spec", "plan", "scope", "arbitrage", "merge"],
+      "properties": {
+        "spec": { "$ref": "#/$defs/gate" },
+        "plan": { "$ref": "#/$defs/gate" },
+        "scope": { "$ref": "#/$defs/gate" },
+        "arbitrage": { "$ref": "#/$defs/gate" },
+        "merge": { "$ref": "#/$defs/gate" }
+      }
+    },
+    "review_ledger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rounds", "findings"],
+          "properties": {
+            "rounds": { "type": "integer", "minimum": 0 },
+            "findings": { "type": "object", "additionalProperties": { "$ref": "#/$defs/finding" } }
+          }
+        }
+      }
+    },
+    "escalations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["date", "cle", "niveau", "verdict"],
+        "properties": {
+          "date": { "$ref": "#/$defs/date" },
+          "cle": { "type": "string", "minLength": 1 },
+          "niveau": { "enum": ["arbitre", "humain"] },
+          "verdict": { "type": "string" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "pr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numero", "url"],
+      "properties": {
+        "numero": { "type": ["integer", "null"] },
+        "url": { "type": ["string", "null"] }
+      }
+    },
+    "historique": { "type": "array", "items": { "$ref": "#/$defs/entree_datee" } },
+    "blocages": { "type": "array", "items": { "$ref": "#/$defs/entree_datee" } },
+    "decisions": { "type": "array", "items": { "$ref": "#/$defs/entree_datee" } },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "extensions": { "type": "object", "description": "Une clé par option active. Libre, mais rangé ici et nulle part ailleurs." }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "rigueur": { "const": "complete" } } },
+      "then": {
+        "properties": { "rigueur_motif": { "type": "string", "minLength": 3 } },
+        "description": "Pas de déclencheur nommé, pas de régime complet."
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "enum": [
+              "waiting_gate_spec", "waiting_gate_plan", "waiting_gate_scope", "waiting_gate_arbitrage",
+              "waiting_gate_merge", "stopped_max_tours", "stopped_error"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": { "previous_stage": { "type": "string" } },
+        "description": "Une story en attente ou arrêtée sait toujours d'où elle vient, sinon elle ne peut pas reprendre."
+      }
+    }
+  ]
+}

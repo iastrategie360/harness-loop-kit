@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "resume", "findings", "questions_pour_humain"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["solide", "a_reviser", "a_rejeter"],
+      "description": "Jugement global de la spec du point de vue du produit et de ses utilisateurs"
+    },
+    "resume": {
+      "type": "string",
+      "description": "Synthèse du challenge en 3 phrases maximum"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severite", "titre", "detail", "recommandation"],
+        "properties": {
+          "severite": { "type": "string", "enum": ["critique", "majeur", "mineur"] },
+          "titre": { "type": "string" },
+          "detail": { "type": "string", "description": "Le problème, concret et argumenté" },
+          "recommandation": { "type": "string", "description": "Ce que la spec devrait dire à la place" }
+        }
+      }
+    },
+    "questions_pour_humain": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Décisions que seule la personne qui approuve peut trancher. Vide si aucune."
+    }
+  }
+}

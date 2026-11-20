@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "justification", "correctif_suggere", "severite"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["finding_valide", "faux_positif", "resolution_recommandee"],
+      "description": "Jugement neutre de l'arbitre sur le finding contesté"
+    },
+    "justification": {
+      "type": "string",
+      "description": "Pourquoi ce verdict, en 3 phrases maximum, avec le fichier et la ligne lus"
+    },
+    "correctif_suggere": {
+      "type": "string",
+      "description": "Si finding_valide ou resolution_recommandee : le correctif concret et minimal. Si faux_positif : pourquoi le finding peut être fermé."
+    },
+    "severite": {
+      "type": ["string", "null"],
+      "enum": ["P0", "P1", "P2", "P3", null],
+      "description": "Sévérité retenue par l'arbitre si le finding est valide, sinon null"
+    }
+  }
+}

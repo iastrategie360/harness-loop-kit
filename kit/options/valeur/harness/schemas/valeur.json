@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Verdict de l'arbitre de valeur",
+  "description": "Réponse de l'agent harness-valeur pour un lot d'items. Validée par harness/scripts/valeur-valider.sh avant toute application.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["resume", "items"],
+  "properties": {
+    "resume": {
+      "allOf": [{ "$ref": "#/$defs/texte" }, { "minLength": 10 }],
+      "description": "Deux ou trois phrases : combien d'items, combien à faire, et ce qui porte la valeur dans le lot."
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cle",
+          "verdict",
+          "exposition",
+          "cout_si_ca_arrive",
+          "reversibilite",
+          "cout_de_differer",
+          "declencheur_reveil",
+          "ligne_backlog"
+        ],
+        "properties": {
+          "cle": {
+            "type": "string",
+            "minLength": 1,
+            "description": "La clé de l'item, recopiée LITTÉRALEMENT depuis le lot soumis."
+          },
+          "verdict": {
+            "enum": ["ON_LE_FAIT", "ON_LE_NOTE", "ON_LE_JETTE", "HORS_ARBITRAGE"]
+          },
+          "exposition": {
+            "$ref": "#/$defs/fait",
+            "description": "Qui peut rencontrer le problème aujourd'hui, par quel chemin nommé, et d'où vient la situation lue. Sur HORS_ARBITRAGE : le numéro du cas de plancher et sa raison."
+          },
+          "cout_si_ca_arrive": {
+            "$ref": "#/$defs/fait",
+            "description": "Ordre de grandeur de ce que ça coûte si le problème se produit. Porte aussi le motif d'un ON_LE_JETTE."
+          },
+          "reversibilite": {
+            "$ref": "#/$defs/fait",
+            "description": "Ce qu'il faut pour réparer après coup, et ce qui ne se répare pas."
+          },
+          "cout_de_differer": {
+            "$ref": "#/$defs/fait",
+            "description": "Ce que coûte d'attendre : le même prix plus tard, ou plus cher, et pourquoi."
+          },
+          "declencheur_reveil": {
+            "$ref": "#/$defs/texte",
+            "description": "Sur ON_LE_NOTE seulement : le fait observable et nommé qui rend l'item à faire. Vide sinon."
+          },
+          "ligne_backlog": {
+            "$ref": "#/$defs/texte",
+            "description": "Sur ON_LE_NOTE seulement : la ligne à recopier telle quelle dans les reports de la story. Vide sinon."
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "verdict": { "const": "ON_LE_NOTE" } }, "required": ["verdict"] },
+            "then": {
+              "properties": {
+                "declencheur_reveil": { "minLength": 8 },
+                "ligne_backlog": { "minLength": 20 }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": { "verdict": { "enum": ["ON_LE_FAIT", "ON_LE_JETTE", "HORS_ARBITRAGE"] } },
+              "required": ["verdict"]
+            },
+            "then": {
+              "properties": {
+                "declencheur_reveil": { "maxLength": 0 },
+                "ligne_backlog": { "maxLength": 0 }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "texte": {
+      "type": "string",
+      "pattern": "^[^\\u2014\\u2013]*$"
+    },
+    "fait": {
+      "allOf": [{ "$ref": "#/$defs/texte" }, { "minLength": 3 }]
+    }
+  }
+}

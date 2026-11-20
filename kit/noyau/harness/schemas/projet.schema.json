@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Configuration du harness pour un projet",
+  "description": "Toutes les VALEURS propres au projet. La procédure vit dans .claude/commands/harness.md, le pourquoi dans harness/HARNESS.md. Clés fermées : une clé inconnue est refusée.",
+  "$defs": {
+    "commande": {
+      "type": ["object", "null"],
+      "description": "null = commande absente, déclarée comme telle. Sans prouvee_le, la commande est refusée par gate.sh.",
+      "additionalProperties": false,
+      "required": ["cmd", "prouvee_le", "exit", "duree_s", "base_rouge"],
+      "properties": {
+        "cmd": { "type": "string", "minLength": 1 },
+        "prouvee_le": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "exit": { "type": ["integer", "null"] },
+        "duree_s": { "type": ["number", "null"], "minimum": 0 },
+        "base_rouge": { "type": "boolean", "description": "true si la commande échouait DÉJÀ le jour de l'installation : un rouge ne prouve alors pas une régression." }
+      }
+    },
+    "commande_nommee": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nom", "cmd", "prouvee_le", "exit", "duree_s", "base_rouge"],
+      "properties": {
+        "nom": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+        "cmd": { "type": "string", "minLength": 1 },
+        "prouvee_le": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "exit": { "type": ["integer", "null"] },
+        "duree_s": { "type": ["number", "null"], "minimum": 0 },
+        "base_rouge": { "type": "boolean" }
+      }
+    },
+    "liste_textes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kit", "projet", "git", "chemins", "commandes", "execution", "rigueur",
+    "perimetres_interdits", "plancher", "boucle", "gates", "relecteur", "notification", "options"
+  ],
+  "properties": {
+    "kit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "schema_etat"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "schema_etat": { "const": 1 }
+      }
+    },
+    "projet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nom", "description", "approbateur", "langue", "regles_style"],
+      "properties": {
+        "nom": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "approbateur": { "type": "string", "minLength": 1, "description": "La personne qui franchit les gates humaines. Son prénom, ou un rôle." },
+        "langue": { "type": "string", "minLength": 2, "description": "Langue des specs, commits et commentaires." },
+        "regles_style": { "$ref": "#/$defs/liste_textes" }
+      }
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branche_integration", "branche_production", "remote", "prefixe_branche", "forge", "format_commit"],
+      "properties": {
+        "branche_integration": { "type": "string", "minLength": 1, "description": "La branche qui reçoit les PR des stories." },
+        "branche_production": { "type": ["string", "null"], "description": "La branche que seul l'approbateur fait avancer. null si la même que l'intégration." },
+        "remote": { "type": "string", "minLength": 1 },
+        "prefixe_branche": { "type": "string" },
+        "forge": { "enum": ["github", "gitlab", "aucune"] },
+        "format_commit": { "type": "string", "minLength": 1 }
+      }
+    },
+    "chemins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["specs", "etat", "reviews", "backlog", "contexte", "narratifs"],
+      "properties": {
+        "specs": { "type": "string", "minLength": 1 },
+        "etat": { "type": "string", "minLength": 1 },
+        "reviews": { "type": "string", "minLength": 1 },
+        "backlog": { "type": ["string", "null"] },
+        "contexte": { "$ref": "#/$defs/liste_textes", "description": "Documents lus par les agents avant d'écrire (vision, architecture, conventions)." },
+        "narratifs": { "$ref": "#/$defs/liste_textes", "description": "Documents dont la modification ne périme PAS une review de PR. Nommés un par un, jamais par joker." }
+      }
+    },
+    "commandes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["installer", "tests", "tests_longs", "build", "demarrer", "sante", "arreter", "capture", "statique"],
+      "properties": {
+        "installer": { "$ref": "#/$defs/commande" },
+        "tests": { "$ref": "#/$defs/commande" },
+        "tests_longs": { "$ref": "#/$defs/commande" },
+        "build": { "$ref": "#/$defs/commande" },
+        "demarrer": { "$ref": "#/$defs/commande", "description": "Lance le produit sur le banc local. Reçoit le port dans la variable PORT." },
+        "sante": { "$ref": "#/$defs/commande", "description": "Rend 0 quand le banc répond. Reçoit PORT." },
+        "arreter": { "$ref": "#/$defs/commande", "description": "null = arrêt par le PID exact enregistré au démarrage." },
+        "capture": { "$ref": "#/$defs/commande", "description": "Produit le rendu réel (image ou texte) dans le fichier $HARNESS_SORTIE. Reçoit PORT et HARNESS_CIBLE." },
+        "statique": { "type": "array", "items": { "$ref": "#/$defs/commande_nommee" } }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "port", "ports_interdits", "garde_prod", "commandes_interdites"],
+      "properties": {
+        "type": { "enum": ["web", "api", "cli", "bibliotheque", "mobile", "autre"] },
+        "port": { "anyOf": [{ "$ref": "#/$defs/port" }, { "type": "null" }] },
+        "ports_interdits": { "type": "array", "items": { "$ref": "#/$defs/port" } },
+        "garde_prod": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["variables", "fichiers", "motifs_interdits"],
+          "properties": {
+            "variables": { "$ref": "#/$defs/liste_textes", "description": "NOMS des variables d'environnement à contrôler avant de démarrer le banc. Jamais leurs valeurs." },
+            "fichiers": { "$ref": "#/$defs/liste_textes", "description": "Fichiers d'environnement (format CLE=valeur) où ces variables sont définies, en plus de l'environnement du processus. Lus par banc.sh, jamais affichés." },
+            "motifs_interdits": { "$ref": "#/$defs/liste_textes", "description": "Expressions régulières : si la valeur d'une variable contrôlée en contient une, le banc refuse de démarrer." }
+          }
+        },
+        "commandes_interdites": { "$ref": "#/$defs/liste_textes" }
+      }
+    },
+    "rigueur": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["declencheurs", "budget_legere"],
+      "properties": {
+        "declencheurs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["nom", "chemins", "description"],
+            "properties": {
+              "nom": { "type": "string", "minLength": 1 },
+              "chemins": { "$ref": "#/$defs/liste_textes" },
+              "description": { "type": "string" }
+            }
+          }
+        },
+        "budget_legere": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pages_spec", "exigences", "taches"],
+          "properties": {
+            "pages_spec": { "type": "integer", "minimum": 1 },
+            "exigences": { "type": "integer", "minimum": 1 },
+            "taches": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "perimetres_interdits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["chemins", "raison"],
+        "properties": {
+          "chemins": { "$ref": "#/$defs/liste_textes" },
+          "raison": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "plancher": { "$ref": "#/$defs/liste_textes", "description": "Les cas qui ne se diffèrent jamais. Lu par l'option valeur et par le superviseur." },
+    "boucle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_tours", "echecs_consecutifs", "seuil_escalade_rounds", "seuil_survie"],
+      "properties": {
+        "max_tours": { "type": "integer", "minimum": 1 },
+        "echecs_consecutifs": { "type": "integer", "minimum": 1 },
+        "seuil_escalade_rounds": { "type": "integer", "minimum": 1 },
+        "seuil_survie": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spec", "merge"],
+      "properties": {
+        "spec": { "enum": ["auto", "humaine"] },
+        "merge": { "const": "humaine" }
+      }
+    },
+    "relecteur": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cli", "modele", "effort", "delais_s", "chemins_exclus", "accord_envoi_externe"],
+      "properties": {
+        "cli": { "const": "codex" },
+        "modele": { "type": ["string", "null"], "description": "null = le modèle par défaut du CLI." },
+        "effort": { "enum": ["low", "medium", "high"] },
+        "delais_s": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["court", "diff", "pr"],
+          "properties": {
+            "court": { "type": "integer", "minimum": 30 },
+            "diff": { "type": "integer", "minimum": 30 },
+            "pr": { "type": "integer", "minimum": 30 }
+          }
+        },
+        "chemins_exclus": { "$ref": "#/$defs/liste_textes", "description": "Chemins que le relecteur a pour CONSIGNE de ne pas ouvrir, portée par chaque appel. Ce n'est pas une barrière : le relecteur lit l'arbre de travail. Une review de diff refuse de partir si le diff touche un de ces chemins. Un fichier qui ne doit jamais partir ne doit pas se trouver dans l'arbre." },
+        "accord_envoi_externe": { "type": "boolean", "description": "L'approbateur a accepté que le code parte chez le fournisseur du relecteur. false = aucun script de relecture ne démarre." }
+      }
+    },
+    "notification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commande", "fichier_env", "journal", "anti_repetition_h"],
+      "properties": {
+        "commande": { "type": ["string", "null"], "description": "Commande d'envoi. Reçoit HARNESS_SUJET, HARNESS_CORPS, HARNESS_NIVEAU. null = journal seul." },
+        "fichier_env": { "type": ["string", "null"], "description": "Fichier d'environnement HORS dépôt qui porte le secret du canal." },
+        "journal": { "type": "string", "minLength": 1 },
+        "anti_repetition_h": { "type": "number", "minimum": 0 }
+      }
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valeur", "personas", "note_story", "creneaux"],
+      "properties": {
+        "valeur": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["actif", "fichiers_situation"],
+          "properties": {
+            "actif": { "type": "boolean" },
+            "fichiers_situation": { "$ref": "#/$defs/liste_textes", "description": "Documents qui disent où en est le projet (ouvert ou non, clients ou non). Lus par l'arbitre à chaque appel." }
+          }
+        },
+        "personas": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["actif", "dossier"],
+          "properties": {
+            "actif": { "type": "boolean" },
+            "dossier": { "type": "string", "minLength": 1 }
+          }
+        },
+        "note_story": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["actif", "index"],
+          "properties": {
+            "actif": { "type": "boolean" },
+            "index": { "type": "string", "minLength": 1 }
+          }
+        },
+        "creneaux": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["actif", "ports", "ressources_exclusives", "liens"],
+          "properties": {
+            "actif": { "type": "boolean" },
+            "ports": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["a", "b"],
+              "properties": {
+                "a": { "anyOf": [{ "$ref": "#/$defs/port" }, { "type": "null" }] },
+                "b": { "anyOf": [{ "$ref": "#/$defs/port" }, { "type": "null" }] }
+              }
+            },
+            "ressources_exclusives": { "$ref": "#/$defs/liste_textes", "description": "Chemins qu'un seul chantier peut porter à la fois (migrations numérotées, documents transverses)." },
+            "liens": { "$ref": "#/$defs/liste_textes", "description": "Fichiers ou dossiers non versionnés à relier dans le second arbre de travail (dépendances installées, fichiers d'environnement)." }
+          }
+        }
+      }
+    }
+  }
+}

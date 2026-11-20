@@ -1,0 +1,81 @@
+{
+  "kit": { "version": "1.0.0", "schema_etat": 1 },
+  "projet": {
+    "nom": "Mon projet",
+    "description": "Une phrase : ce que fait le produit, et pour qui.",
+    "approbateur": "Camille",
+    "langue": "français",
+    "regles_style": ["Phrases courtes.", "Pas de jargon interne dans ce que lit un utilisateur."]
+  },
+  "git": {
+    "branche_integration": "main",
+    "branche_production": null,
+    "remote": "origin",
+    "prefixe_branche": "feat/",
+    "forge": "github",
+    "format_commit": "type(portée): description courte"
+  },
+  "chemins": {
+    "specs": "specs",
+    "etat": "harness/state",
+    "reviews": "harness/reviews",
+    "backlog": null,
+    "contexte": ["README.md"],
+    "narratifs": []
+  },
+  "commandes": {
+    "installer": null,
+    "tests": { "cmd": "true", "prouvee_le": null, "exit": null, "duree_s": null, "base_rouge": false },
+    "tests_longs": null,
+    "build": null,
+    "demarrer": null,
+    "sante": null,
+    "arreter": null,
+    "capture": null,
+    "statique": []
+  },
+  "execution": {
+    "type": "bibliotheque",
+    "port": null,
+    "ports_interdits": [],
+    "garde_prod": { "variables": [], "fichiers": [], "motifs_interdits": [] },
+    "commandes_interdites": []
+  },
+  "rigueur": {
+    "declencheurs": [
+      { "nom": "migration de données", "chemins": ["migrations/**"], "description": "Un schéma ou des données changent : l'erreur ne se rattrape pas par un simple retour de code." }
+    ],
+    "budget_legere": { "pages_spec": 1, "exigences": 8, "taches": 12 }
+  },
+  "perimetres_interdits": [],
+  "plancher": [
+    "sévérité P0",
+    "effet irréversible pour un utilisateur (argent, données perdues)",
+    "accès ou identité : quelqu'un voit ou fait ce qu'il ne doit pas",
+    "l'item contredit un critère d'acceptation de la spec en cours",
+    "l'item touche un périmètre interdit",
+    "un fait faux écrit dans un écran ou un document"
+  ],
+  "boucle": { "max_tours": 100, "echecs_consecutifs": 3, "seuil_escalade_rounds": 4, "seuil_survie": 2 },
+  "gates": { "spec": "auto", "merge": "humaine" },
+  "relecteur": {
+    "cli": "codex",
+    "modele": null,
+    "effort": "high",
+    "delais_s": { "court": 600, "diff": 1200, "pr": 1800 },
+    "chemins_exclus": [],
+    "accord_envoi_externe": false
+  },
+  "notification": {
+    "commande": null,
+    "fichier_env": null,
+    "journal": "harness/.travail/notifications.log",
+    "anti_repetition_h": 6
+  },
+  "options": {
+    "valeur": { "actif": false, "fichiers_situation": [] },
+    "personas": { "actif": false, "dossier": "harness/personas" },
+    "note_story": { "actif": false, "index": "specs/INDEX.md" },
+    "creneaux": { "actif": false, "ports": { "a": null, "b": null }, "ressources_exclusives": [], "liens": [] }
+  }
+}
