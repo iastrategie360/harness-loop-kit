@@ -88,12 +88,17 @@ l'écrivant. Un second modèle, d'un autre fournisseur, ne les partage pas. C'es
 d'être du relecteur, et c'est pourquoi il intervient quatre fois : sur la spec, sur le plan,
 sur le diff en cours de code (rigueur complète), et sur la PR.
 
-Cinq précautions l'entourent, chacune née d'un incident réel :
+Six précautions l'entourent, chacune née d'un incident réel :
 
 - **Lecture seule, imposée et vérifiée.** Un CLI de relecture lancé dans un dépôt de confiance
   peut y écrire. Les scripts imposent la lecture seule, puis comparent le dépôt avant et
   après. S'il a bougé, la sortie est écartée et rien n'est annulé à l'aveugle : annuler « pour
   nettoyer » détruirait aussi le travail en cours.
+- **Un relecteur à la fois, et aucun écrivain pendant qu'il lit.** Le contrôle d'empreinte ne
+  sait pas QUI a écrit. Un codeur qui écrit pendant une relecture, ou un second relecteur qui
+  pose son artefact, ferait écarter une relecture saine, ou pire, inviterait à « réparer » en
+  détruisant un travail en cours. Chaque script de relecture prend donc le même verrou du
+  checkout, et le superviseur ne délègue rien au codeur pendant qu'un relecteur tourne.
 - **Une sortie vide est un échec.** Un relecteur en panne, hors quota ou non authentifié rend
   parfois un code de succès et rien d'autre. Si on pose ce rien dans un fichier, il se lit
   ensuite comme « aucun défaut ». La sortie s'écrit donc dans un fichier temporaire, se
@@ -151,6 +156,12 @@ boucle ne le résout pas. L'échelle est alors :
 1. **l'arbitre** : le même relecteur, mais dans un contexte neuf, sans le débat. Il lit le
    code et les deux positions ;
 2. **l'humain**, si l'arbitre ne suffit pas.
+
+Avec l'option `mistral`, l'arbitre est un modèle d'un autre fournisseur, et un étage de plus
+s'insère avant l'humain : la **tranche finale**, une décision contraignante d'un troisième
+avis, pour un désaccord qui a survécu à l'arbitrage et à un round de correction. Elle ne
+s'applique jamais à un défaut critique, ni à un cas du plancher, ni à un périmètre interdit :
+ceux-là restent à l'humain.
 
 L'arbitre a une portée bornée : il peut fermer seul un défaut mineur qu'il juge faux, pas un
 défaut grave. Sur un défaut grave, deux modèles en désaccord sont une information que
@@ -239,7 +250,7 @@ Sans elle, « le harness ne merge jamais » est une consigne. Avec elle, c'est u
 
 ## Les options
 
-Le noyau suffit. Quatre options s'y branchent sans le modifier, par des points d'extension
+Le noyau suffit. Cinq options s'y branchent sans le modifier, par des points d'extension
 que le superviseur nomme dans sa procédure. Chacune s'explique dans son propre fichier,
 `harness/options/<nom>.md` :
 
@@ -249,6 +260,7 @@ que le superviseur nomme dans sa procédure. Chacune s'explique dans son propre 
 | `personas` | que dirait un utilisateur type devant ce brief, puis devant cet écran ? |
 | `note_story` | dans six mois, où lira-t-on ce que cette story a décidé ? |
 | `creneaux` | peut-on mener deux stories en même temps sans qu'elles se marchent dessus ? |
+| `mistral` | un second service relit-il la sécurité de chaque PR, et départage-t-il les désaccords ? |
 
 N'en active aucune avant d'avoir mené quelques stories avec le noyau seul : une option répond
 à un problème qu'on a eu, pas à un problème qu'on imagine.
@@ -281,8 +293,10 @@ les autres branches voient encore la story en attente.
 
 ## Limites connues
 
-- **Un seul relecteur.** Si son CLI est en panne, le harness s'arrête au lieu de continuer
-  sans relecture. C'est voulu, et c'est une dépendance.
+- **Un seul relecteur de code.** Si son CLI est en panne, le harness s'arrête au lieu de
+  continuer sans relecture. C'est voulu, et c'est une dépendance. L'option `mistral` ajoute un
+  second service pour la sécurité et l'arbitrage, pas une seconde review de code ; elle ajoute
+  aussi une seconde dépendance : son CLI en panne bloque la gate de PR.
 - **Deux modèles peuvent avoir tort ensemble.** La relecture croisée réduit les angles morts,
   elle ne les supprime pas. La QA sur le produit en marche et le regard sur le rendu existent
   pour cette raison.

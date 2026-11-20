@@ -178,6 +178,12 @@ qui lit le code et les deux positions), puis l'approbateur. L'arbitre ne modifie
 et il ne ferme pas seul un défaut grave : deux modèles en désaccord sur un point grave, c'est
 une information que l'humain doit avoir.
 
+Un étage peut s'insérer avant l'humain (option `mistral`) : une **tranche finale**, rendue
+par un troisième avis, qui cherche la solution la plus simple et dont la décision s'applique
+telle quelle. Elle n'est sûre qu'à trois conditions : son contexte est complet (un contexte
+tronqué est un refus, jamais une décision), elle ne touche ni un défaut critique ni un cas du
+plancher, et l'approbateur est prévenu de chaque décision.
+
 ### La règle d'arrêt
 
 Une relecture trouve toujours quelque chose. Attendre une relecture vide pour s'arrêter,
@@ -306,9 +312,11 @@ l'attente toujours notifiée, la fusion réservée à un humain.
 
 Dit pour que personne ne le cherche :
 
-- **un second modèle relecteur** et une relecture de sécurité dédiée. Le kit a un relecteur ;
-  l'arbitre est ce même relecteur en contexte neuf, puis l'humain. Conséquence : plus
-  d'arrêts humains sur les désaccords tenaces ;
+- **un second modèle relecteur de code.** Le kit a un relecteur de code ; sans option,
+  l'arbitre est ce même relecteur en contexte neuf, puis l'humain. L'option `mistral` reprend
+  du harness d'origine la relecture de sécurité dédiée, l'arbitre d'un autre fournisseur et la
+  tranche finale, mais pas une seconde review de code (trop chère pour ce qu'elle ajoutait).
+  Sans elle : plus d'arrêts humains sur les désaccords tenaces ;
 - **le flux de release** (branche d'intégration vers production, suivi des fils de
   discussion de la forge) : trop lié à une forge et à une façon de livrer ;
 - **la reprise fine des chantiers parallèles** : l'option `creneaux` refuse et explique, elle

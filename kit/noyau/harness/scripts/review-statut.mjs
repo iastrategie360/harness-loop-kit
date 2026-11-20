@@ -9,18 +9,22 @@
 //
 // Usage :
 //   review-statut.mjs <story-id | artefact.json> <cle> <statut> [--note "<pourquoi>"]
-//                     [--escalade <arbitre|humain>]
+//                     [--escalade <arbitre|tranche|humain>] [--securite]
 //   <statut> = corrige | refute | faux_positif | perime | differe_valeur | ecarte_valeur
 //   La note est OBLIGATOIRE pour tout statut autre que « corrige ».
 //   <statut> = rouvrir : EFFACE le statut posé (une décision prise à tort, ou un report dont
 //   le déclencheur de réveil a tiré). Le finding bloque de nouveau la gate. Note obligatoire.
+//   --securite : vise l'artefact de la relecture sécurité (option `mistral`), rangé à côté de
+//   celui de la review de code. --escalade tranche n'existe qu'avec la tranche finale active.
 //
 // Codes : 0 statut posé ; 1 refus (artefact absent, clé inconnue, statut inconnu, note
 //         manquante) ; 64 usage.
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { STATUTS, genererMarkdown } from "./lib/review-pr-artefact.mjs";
-import { chargerConfig, trouverRacine, cheminArtefactReview, ecrireJson, maintenant, ErreurConfig } from "./lib/config.mjs";
+import { STATUTS, genererMarkdown, cheminArtefactSecurite } from "./lib/review-pr-artefact.mjs";
+import {
+  chargerConfig, trouverRacine, cheminArtefactReview, ecrireJson, maintenant, trancheActive, ErreurConfig,
+} from "./lib/config.mjs";
 
 const positionnels = [];
 const options = {};
@@ -29,13 +33,15 @@ for (let i = 0; i < argv.length; i += 1) {
   if (argv[i] === "--note" || argv[i] === "--escalade") {
     options[argv[i]] = argv[i + 1];
     i += 1;
+  } else if (argv[i] === "--securite") {
+    options["--securite"] = true;
   } else {
     positionnels.push(argv[i]);
   }
 }
 const [cible, cle, statut] = positionnels;
 if (!cible || !cle || !statut || positionnels.length !== 3) {
-  console.error(`usage : review-statut.mjs <story-id | artefact.json> <cle> <statut> [--note "<pourquoi>"] [--escalade <arbitre|humain>]\n  <statut> = ${STATUTS.join(" | ")} | rouvrir`);
+  console.error(`usage : review-statut.mjs <story-id | artefact.json> <cle> <statut> [--note "<pourquoi>"] [--escalade <arbitre|tranche|humain>] [--securite]\n  <statut> = ${STATUTS.join(" | ")} | rouvrir`);
   process.exit(64);
 }
 
@@ -61,11 +67,17 @@ if (statut !== "corrige" && note === "") {
   refuser(`le statut « ${statut} » est une décision : il exige --note "<pourquoi>" (c'est ce que lira l'approbateur).`);
 }
 const escalade = options["--escalade"];
-if (escalade !== undefined && !["arbitre", "humain"].includes(escalade)) refuser("--escalade attend « arbitre » ou « humain ».");
+const niveaux = trancheActive(config) ? ["arbitre", "tranche", "humain"] : ["arbitre", "humain"];
+if (escalade !== undefined && !niveaux.includes(escalade)) {
+  refuser(`--escalade attend ${niveaux.map((n) => `« ${n} »`).join(", ")}${escalade === "tranche" ? " (la tranche finale de l'option mistral n'est pas active)" : ""}.`);
+}
 
-const cheminDepot = cheminArtefactReview(config, racine, cible);
+const cheminCode = cheminArtefactReview(config, racine, cible);
+const cheminDepot = options["--securite"] ? cheminArtefactSecurite(cheminCode) : cheminCode;
 const chemin = join(racine, cheminDepot);
-if (!existsSync(chemin)) refuser(`artefact absent : ${cheminDepot}. Lancer d'abord review-pr-locale.sh.`);
+if (!existsSync(chemin)) {
+  refuser(`artefact absent : ${cheminDepot}. Lancer d'abord ${options["--securite"] ? "mistral-securite.sh" : "review-pr-locale.sh"}.`);
+}
 let artefact;
 try {
   artefact = JSON.parse(readFileSync(chemin, "utf8"));

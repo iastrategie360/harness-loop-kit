@@ -139,7 +139,7 @@ Elles sont classées par thème. La dernière section donne les dix à lire en p
 **26. Deux relecteurs, et pas d'arrêt trop tôt**
 - Le piège : un seul relecteur, ou l'arrêt au premier round calme.
 - Ce qui est arrivé : sur sept rounds, cinq défauts bloquants sont venus du second relecteur, et le pire du premier au sixième round.
-- La règle : croiser deux relecteurs (l'un vérifie que cela marche, l'autre que cela dit vrai) et continuer tant qu'un round produit un bloquant réel. Le kit n'en livre qu'un : c'est une limite connue, dite dans `harness/HARNESS.md`.
+- La règle : croiser deux relecteurs (l'un vérifie que cela marche, l'autre que cela dit vrai) et continuer tant qu'un round produit un bloquant réel. Le kit n'en livre qu'un pour le code : c'est une limite connue, dite dans `harness/HARNESS.md`. L'option `mistral` ajoute un second service pour la sécurité et l'arbitrage (leçons 71 à 74).
 
 **27. Vérifier l'arbitre contre sa propre justification**
 - Le piège : appliquer à la lettre le correctif suggéré par un arbitre.
@@ -372,6 +372,28 @@ Elles sont classées par thème. La dernière section donne les dix à lire en p
 - Le piège : interrompre pour une incohérence mineure et réversible, ou remonter une décision déjà prise.
 - Ce qui est arrivé : une question a été remontée pour une incohérence sans enjeu, et une objection a rouvert une décision de marque ancienne.
 - La règle : trancher et noter le motif ; ne remonter que ce qui change le périmètre, engage de l'argent, touche un accès ou ne peut pas être défait.
+
+## Relecteurs externes, coût et décisions contraignantes
+
+**71. Des lots plus petits, et un budget calculé avant de démarrer**
+- Le piège : envoyer un gros diff en quelques gros morceaux, et découvrir le coût sur la facture.
+- Ce qui est arrivé : des appels sur de gros lots ont duré plusieurs minutes, plusieurs ont été coupés par le réseau, un lot a dépassé vingt minutes ; une seule relecture d'un diff d'un million d'octets a coûté plusieurs dollars et près de deux heures.
+- La règle : découper en lots plus petits (des appels plus courts, des reprises moins chères), plafonner chaque session, et refuser de démarrer si lots x plafond de session x essais dépasse le budget de la relecture.
+
+**72. Un nouvel essai pour un hoquet, jamais pour un plafond**
+- Le piège : relancer tout échec, ou n'en relancer aucun.
+- Ce qui est arrivé : un seul lot tombé sur une erreur réseau, parmi une vingtaine, a fait échouer toute la relecture et repayer tous les autres ; ailleurs, relancer une session qui avait atteint son plafond de coût a payé deux fois la même impasse.
+- La règle : un nouvel essai sur un échec transitoire seulement (lu sur les dernières lignes du journal, jamais sur le contenu relu), aucun sur un plafond, un délai ou un refus d'authentification ; et une reprise qui ne relance que les lots sans réponse, sur un instantané identique.
+
+**73. Deux producteurs, deux artefacts**
+- Le piège : ranger la relecture d'un second relecteur dans le même artefact que la première.
+- Ce qui est arrivé : la fusion ferme d'elle-même un défaut absent d'une nouvelle relecture ; dans un artefact partagé, une relecture sécurité propre aurait fermé tous les défauts ouverts de la review de code.
+- La règle : un artefact par producteur, lus par la même gate, le plus prudent l'emporte ; écrire l'un ne périme pas l'autre, et une relecture absente bloque.
+
+**74. Jamais de décision contraignante sur un contexte amputé**
+- Le piège : tronquer un prompt trop gros pour qu'il passe, puis appliquer la réponse.
+- Ce qui est arrivé : un prompt borné par la taille d'un argument du système coupait le diff en silence ; un modèle sans outil ne voyait plus le morceau qui comptait, et sa décision allait être appliquée telle quelle.
+- La règle : un prompt n'est jamais tronqué ; au-delà de la borne, c'est un refus. Une décision qui s'applique sans relecture humaine exige un contexte complet, ou elle n'a pas lieu.
 
 ## Les dix à retenir d'abord
 

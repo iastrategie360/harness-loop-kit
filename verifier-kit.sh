@@ -98,7 +98,15 @@ for piece in LISEZMOI.md VERSION poser.sh verifier-kit.sh \
   kit/noyau/harness/scripts/lib/config.mjs kit/noyau/harness/scripts/lib/schema-mini.mjs \
   kit/options/valeur/harness/options/valeur.md kit/options/personas/harness/options/personas.md \
   kit/options/note_story/harness/options/note_story.md \
-  kit/options/creneaux/harness/options/creneaux.md; do
+  kit/options/creneaux/harness/options/creneaux.md \
+  kit/options/mistral/harness/options/mistral.md kit/options/mistral/harness/scripts/mistral-commun.sh \
+  kit/options/mistral/harness/scripts/mistral-securite.sh kit/options/mistral/harness/scripts/mistral-arbitrer.sh \
+  kit/options/mistral/harness/scripts/mistral-trancher.sh kit/options/mistral/harness/scripts/mistral-preflight.sh \
+  kit/options/mistral/harness/scripts/decouper-diff.mjs kit/options/mistral/harness/scripts/lib/decoupe-diff.mjs \
+  kit/options/mistral/harness/scripts/lib/profil-vibe.mjs kit/options/mistral/harness/vibe/agents/relecteur.toml \
+  kit/options/mistral/harness/vibe/agents/sans-outils.toml \
+  kit/options/mistral/harness/schemas/simplification.json kit/options/mistral/harness/tests/mistral.test.mjs \
+  kit/options/mistral/harness/tests/faux/vibe; do
   [[ -f "$piece" ]] || manque+="$piece"$'\n'
 done
 if [[ -z "$manque" ]]; then ok "les pièces attendues sont là"; else
@@ -192,8 +200,35 @@ else
   rouge "appels du relecteur : $appels, arguments de lecture seule : $gardes"
 fi
 
+# 1 bis. Le CLI de Mistral (option mistral) ne s'appelle que depuis le fichier commun de l'option,
+# et chaque appel nomme ses outils : sans --enabled-tools, une session programmatique ouvre tout.
+COMMUN_MISTRAL=kit/options/mistral/harness/scripts/mistral-commun.sh
+ailleurs="$(grep -rnE '(^|[^[:alnum:]_.-])vibe -p\b' --include='*.sh' --include='*.mjs' kit \
+  | grep -v "^$COMMUN_MISTRAL:" | grep -v '/harness/tests/' \
+  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(#|//|\*)' || true)"
+if [[ -z "$ailleurs" ]]; then ok "le CLI de Mistral n'est appelé que depuis mistral-commun.sh"; else
+  rouge "appel du CLI de Mistral hors de mistral-commun.sh"
+  detail "$ailleurs"
+fi
+# Chaque appel, suites de ligne comprises, porte --enabled-tools et rien qui lève les permissions.
+bilan_vibe="$(awk '
+  function clore() { if (bloc != "") { n++; if (bloc !~ /--enabled-tools/ || bloc ~ /auto-approve|accept-edits|--trust|--add-dir|bypass/) mauvais++ } bloc = ""; suite = 0 }
+  {
+    if (suite) { bloc = bloc " " $0; if ($0 !~ /\\$/) clore(); next }
+    if ($0 ~ /^[[:space:]]*#/) next
+    if ($0 ~ /(^|[^[:alnum:]_.-])vibe -p( |$)/) { bloc = $0; if ($0 ~ /\\$/) suite = 1; else clore() }
+  }
+  END { clore(); printf "%d %d\n", n, mauvais }
+' "$COMMUN_MISTRAL" 2> /dev/null)"
+read -r appels_vibe mauvais_vibe <<< "${bilan_vibe:-0 0}"
+if [[ "${appels_vibe:-0}" -ge 1 && "${mauvais_vibe:-1}" -eq 0 ]]; then
+  ok "chaque appel du CLI de Mistral ($appels_vibe) borne ses outils par --enabled-tools"
+else
+  rouge "appels du CLI de Mistral : ${appels_vibe:-0}, dont ${mauvais_vibe:-?} sans --enabled-tools ou avec une permission levée"
+fi
+
 # 2. Aucune vérification lancée dans un pipe : le code rendu serait celui de la dernière commande.
-pipes="$(grep -rnE '(gate|banc|preflight|prerequis|review-pr-locale|codex-[a-z-]+)\.sh[^|`#]*[^|]\|[^|]' \
+pipes="$(grep -rnE '(gate|banc|preflight|prerequis|review-pr-locale|codex-[a-z-]+|mistral-[a-z-]+)\.sh[^|`#]*[^|]\|[^|]' \
   --include='*.sh' kit poser.sh | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(#|echo "usage)' || true)"
 if [[ -z "$pipes" ]]; then ok "aucun script de vérification n'est lancé dans un pipe"; else
   rouge "script de vérification lancé dans un pipe"

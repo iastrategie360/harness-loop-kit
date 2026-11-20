@@ -146,6 +146,13 @@ export function proposer(config) {
   if (config.options.note_story.actif) {
     allow.push("Bash(bash harness/scripts/note-valider.sh:*)", "Bash(node harness/scripts/note-index.mjs:*)");
   }
+  // Clé absente d'une configuration 1.0.0 : rien n'est ajouté.
+  if (config.options.mistral?.actif) {
+    allow.push(
+      "Bash(bash harness/scripts/mistral-securite.sh:*)", "Bash(bash harness/scripts/mistral-arbitrer.sh:*)",
+      "Bash(bash harness/scripts/mistral-trancher.sh:*)", "Bash(bash harness/scripts/mistral-preflight.sh:*)",
+    );
+  }
   if (forge === "github") {
     allow.push("Bash(gh pr create:*)", "Bash(gh pr view:*)", "Bash(gh pr list:*)", "Bash(gh pr checks:*)", "Bash(gh run list:*)", "Bash(gh run view:*)");
   }
@@ -201,7 +208,7 @@ export function verifier(reglages, config) {
     const programme = mots[0];
     if (JAMAIS.includes(programme)) refus.push(`${ou} : ${programme} ne s'autorise jamais d'avance`);
     if (TROP_LARGES.includes(programme) && mots.length === 1) refus.push(`${ou} : ${programme} sans script nommé revient à tout autoriser`);
-    if (programme === "codex") refus.push(`${ou} : le relecteur ne s'autorise jamais directement, seulement par les scripts du harness (qui forcent la lecture seule)`);
+    if (programme === "codex" || programme === "vibe") refus.push(`${ou} : le relecteur ne s'autorise jamais directement, seulement par les scripts du harness (qui forcent la lecture seule)`);
     if (programme === "git" && mots.length === 1) refus.push(`${ou} : git sans sous-commande revient à autoriser le push et le reset`);
     if (programme === "git" && mots[1] === "push" && mots.length === 2) refus.push(`${ou} : push sans destination nommée`);
     if (programme === "git" && mots[1] === "push" && mots.length > 2 && mots.filter((m) => !m.startsWith("-")).length < 4) {

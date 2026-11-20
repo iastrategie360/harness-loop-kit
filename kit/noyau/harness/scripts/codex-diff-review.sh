@@ -13,6 +13,7 @@
 #         2 il reste au moins un finding P0 à P2 ; 5 le relecteur a écrit ; 64 usage.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/codex-common.sh"
+relecteur_sous_verrou "${BASH_SOURCE[0]}" "$@"
 
 if (($# > 1)) || [[ "${1:-}" == -* ]]; then
   echo "usage : codex-diff-review.sh [sortie.md]" >&2

@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { valider, formater } from "./lib/schema-mini.mjs";
 import {
-  trouverRacine, chargerConfig, lireSchema, lire, maintenant, ecrireJson, ErreurConfig,
+  trouverRacine, chargerConfig, lireSchema, lire, maintenant, ecrireJson, trancheActive, ErreurConfig,
 } from "./lib/config.mjs";
 
 export const ORDRE = ["INIT", "SPEC", "CHALLENGE", "PLAN", "PLAN_REVIEW", "CODE", "QA", "PR", "REGARD", "NOTE", "DONE"];
@@ -55,7 +55,8 @@ const AIDE = `etat.mjs : toute écriture d'état passe par ici.
   reprendre <id>
   ledger-round <id> --findings <fichier.json>
   finding <id> <cle> <statut> [--note "<texte>"]
-  escalade <id> <cle> <arbitre|humain> --verdict "<verdict>" [--note "<texte>"]
+  escalade <id> <cle> <arbitre|tranche|humain> --verdict "<verdict>" [--note "<texte>"]
+                                          (tranche : seulement avec la tranche finale de l'option mistral)
   prerequis <id>                          exit 0 si tous les prérequis sont tenus
   valider [<id> | --tous]
   liste                                   toutes les stories, en JSON
@@ -665,6 +666,7 @@ const commandes = {
     const cles = presents.map((f) => f.cle);
     if (new Set(cles).size !== cles.length) throw new Refus("deux findings portent la même clé : réconcilier avant d'appeler");
     const { seuil_escalade_rounds: seuilRounds, seuil_survie: seuilSurvie } = ctx.config.boucle;
+    const tranche = trancheActive(ctx.config);
 
     const bilan = modifier(ctx, id, (etat) => {
       const ledger = etat.review_ledger.code;
@@ -685,8 +687,14 @@ const commandes = {
         }
         const courant = ledger.findings[f.cle];
         const tenace = courant.survived >= seuilSurvie || ledger.rounds >= seuilRounds;
+        // L'étage « tranche » (option mistral) s'insère entre l'arbitre et l'humain : un
+        // désaccord qui survit à l'arbitrage ET à un round de correction. Jamais pour un P0 : une
+        // décision contraignante d'un modèle sur un défaut critique reste celle de l'humain.
+        // Option inactive, ou clé absente (configuration 1.0.0) : l'échelle est celle de 1.0.0.
+        const versApresArbitre = tranche && courant.severite !== "P0" ? "tranche" : "humain";
         if (courant.escalation === "humain") b.a_escalader.push({ cle: f.cle, vers: "humain" });
-        else if (courant.escalation === "arbitre") b.a_escalader.push({ cle: f.cle, vers: "humain" });
+        else if (courant.escalation === "tranche") b.a_escalader.push({ cle: f.cle, vers: "humain" });
+        else if (courant.escalation === "arbitre") b.a_escalader.push({ cle: f.cle, vers: versApresArbitre });
         else if (tenace) b.a_escalader.push({ cle: f.cle, vers: "arbitre" });
         else b.a_corriger.push(f.cle);
       }
@@ -728,7 +736,10 @@ const commandes = {
     const { positionnels, options } = analyser(args, { valeurs: ["verdict", "note"] });
     const ctx = contexte();
     const [id, cle, niveau] = positionnels;
-    if (!["arbitre", "humain"].includes(niveau)) throw new Usage("usage : escalade <id> <cle> <arbitre|humain> --verdict ... [--note ...]");
+    if (!["arbitre", "tranche", "humain"].includes(niveau)) throw new Usage("usage : escalade <id> <cle> <arbitre|tranche|humain> --verdict ... [--note ...]");
+    if (niveau === "tranche" && !trancheActive(ctx.config)) {
+      throw new Refus("l'étage « tranche » n'existe qu'avec la tranche finale de l'option mistral (options.mistral : actif, arbitre, tranche_finale)");
+    }
     const verdict = exiger(options.verdict, "--verdict est obligatoire");
     modifier(ctx, id, (etat) => {
       const f = etat.review_ledger.code.findings[cle];
@@ -861,7 +872,7 @@ export function rendreFil(etat, config) {
   const ledger = etat.review_ledger.code;
   if (etat.stage === "CODE" && ledger.rounds > 0) {
     const ouverts = Object.values(ledger.findings).filter((f) => f.statut === "ouvert");
-    const niveau = ouverts.some((f) => f.escalation === "humain") ? "humain" : ouverts.some((f) => f.escalation === "arbitre") ? "arbitre" : "aucune";
+    const niveau = ["humain", "tranche", "arbitre"].find((n) => ouverts.some((f) => f.escalation === n)) ?? "aucune";
     lignes.push(`    review CODE : round ${ledger.rounds} · ouverts ${ouverts.length} · escalade ${niveau}`);
   }
   return lignes.join("\n");

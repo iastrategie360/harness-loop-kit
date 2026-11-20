@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Faux CLI de Mistral pour les tests de l'option mistral : il imite la surface de `vibe` que le
+# harness utilise, sans réseau ni modèle. Piloté par des variables d'environnement :
+#
+#   FAUX_VIBE_MODE     propre (défaut) | p1 | lot2-casse | echec-lot-2 | reseau-puis-ok | plafond |
+#                      ecrit | verdict | simple | pret | vide
+#   FAUX_VIBE_VERSION  ce que rend --version (défaut : « vibe 2.13.0 »)
+#   FAUX_VIBE_COUT     coût écrit dans le journal de session (défaut : 0.0125)
+#   FAUX_VIBE_TRACE    dossier où chaque appel consigne ses arguments, son prompt et ses VIBE_*
+#
+# Il REFUSE (code 9) tout appel qui ne borne pas ses outils, ou qui ouvre autre chose que la
+# lecture : un script du harness qui l'oublierait fait donc rougir les tests.
+set -u
+mode="${FAUX_VIBE_MODE:-propre}"
+
+if [[ "${1:-}" == "--version" || "${1:-}" == "-v" ]]; then
+  echo "${FAUX_VIBE_VERSION:-vibe 2.13.0}"
+  exit 0
+fi
+
+prompt="" agent="" workdir="$PWD" programme=0 outils=()
+args=("$@")
+i=0
+while ((i < ${#args[@]})); do
+  a="${args[i]}"
+  case "$a" in
+    -p | --prompt) programme=1; i=$((i + 1)); prompt="${args[i]}" ;;
+    --agent) i=$((i + 1)); agent="${args[i]}" ;;
+    --enabled-tools) i=$((i + 1)); outils+=("${args[i]}") ;;
+    --workdir) i=$((i + 1)); workdir="${args[i]}" ;;
+    --trust | --add-dir) echo "faux vibe : $a refusé" >&2; exit 9 ;;
+    --max-turns | --max-price | --output | --max-tokens) i=$((i + 1)) ;;
+  esac
+  i=$((i + 1))
+done
+
+if ((!programme)); then
+  echo "faux vibe : appel non prévu : $*" >&2
+  exit 9
+fi
+if ((${#outils[@]} == 0)); then
+  echo "faux vibe : appel SANS --enabled-tools : tous les outils seraient ouverts" >&2
+  exit 9
+fi
+liste="${outils[*]}"
+if [[ "$liste" != "read_file grep" && "$liste" != 're:^$' ]]; then
+  echo "faux vibe : outils non prévus : $liste" >&2
+  exit 9
+fi
+if [[ "$liste" == "read_file grep" && "$agent" != "relecteur" ]]; then
+  echo "faux vibe : lecture demandée sans le profil du relecteur" >&2
+  exit 9
+fi
+if [[ "$liste" == 're:^$' && "$agent" != "sans-outils" ]]; then
+  echo "faux vibe : appel sans outil sans le profil dédié (vibe chargerait le contexte par défaut)" >&2
+  exit 9
+fi
+
+if [[ -n "${FAUX_VIBE_TRACE:-}" ]]; then
+  mkdir -p "$FAUX_VIBE_TRACE"
+  d="$(mktemp -d "$FAUX_VIBE_TRACE/appel-XXXXXX")"
+  printf '%s\n' "$@" > "$d/args"
+  printf '%s' "$prompt" > "$d/prompt"
+  env | grep '^VIBE_' | LC_ALL=C sort > "$d/env"
+  # Le profil que vibe chargerait vraiment : celui du dossier de VIBE_AGENT_PATHS.
+  dossier="$(printf '%s' "${VIBE_AGENT_PATHS:-}" | jq -r '.[0] // empty' 2>/dev/null)"
+  [[ -n "$agent" && -f "$dossier/$agent.toml" ]] && cp "$dossier/$agent.toml" "$d/profil"
+fi
+
+# Le journal de session, là où le harness l'a demandé : c'est là qu'il lit le coût réel.
+save="$(printf '%s' "${VIBE_SESSION_LOGGING:-}" | jq -r '.save_dir // empty' 2>/dev/null)"
+if [[ -n "$save" ]]; then
+  mkdir -p "$save/mistral_$$"
+  printf '{"stats":{"session_cost":%s}}\n' "${FAUX_VIBE_COUT:-0.0125}" > "$save/mistral_$$/meta.json"
+fi
+
+propre() {
+  printf 'Relecture faite.\n\n```json\n{"findings": [], "overall_explanation": "Rien à signaler sur ce lot."}\n```\n'
+}
+
+case "$mode" in
+  propre) propre ;;
+  p1)
+    printf '```json\n{"findings": [{"priority": "P1", "title": "Commande shell construite avec une entrée", "body": "L'\''entrée part telle quelle dans le shell.", "file": "src/garde.py", "line_start": 2, "line_end": 2}], "overall_explanation": "Une faille."}\n```\n'
+    ;;
+  lot2-casse)
+    case "$prompt" in *"LOT 2 SUR"*) echo "pas de json ici" ;; *) propre ;; esac
+    ;;
+  echec-lot-2)
+    case "$prompt" in *"LOT 2 SUR"*) echo "boom" >&2; exit 1 ;; *) propre ;; esac
+    ;;
+  reseau-puis-ok)
+    marque="${FAUX_VIBE_TRACE:-/tmp}/../reseau-deja-tombe"
+    if [[ ! -f "$marque" ]]; then
+      : > "$marque"
+      echo "provider_message: Network error" >&2
+      exit 1
+    fi
+    propre
+    ;;
+  plafond)
+    echo "<vibe_stop_event>Price limit exceeded: \$0.90 > \$0.50</vibe_stop_event>" >&2
+    exit 1
+    ;;
+  ecrit)
+    # Un relecteur qui « vérifie » en modifiant l'arbre de travail.
+    echo "modifié par le relecteur" >> "$workdir/README.md"
+    propre
+    ;;
+  verdict)
+    printf '```json\n{"verdict": "faux_positif", "justification": "Le cas est filtré en amont, src/garde.py ligne 1.", "correctif_suggere": "aucun", "severite": null}\n```\n'
+    ;;
+  simple)
+    printf '```json\n{"diagnostic": "Les deux parties parlent du même cas.", "solution_simple": "Refuser la valeur vide dans garde().", "fichiers_touches": ["src/garde.py"], "anti_over_engineering": "Pas de nouvelle couche de validation."}\n```\n'
+    ;;
+  pret) echo "PRET" ;;
+  vide) exit 0 ;;
+  *) echo "faux vibe : mode inconnu : $mode" >&2; exit 9 ;;
+esac

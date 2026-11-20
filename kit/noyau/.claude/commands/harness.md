@@ -37,7 +37,8 @@ node harness/scripts/etat.mjs fil <id>
 
 ## Les gestes
 
-Tu n'écris JAMAIS le fichier d'état à la main, et tu ne lances jamais `codex` toi-même.
+Tu n'écris JAMAIS le fichier d'état à la main, et tu ne lances jamais `codex` toi-même (ni
+le CLI d'un relecteur qu'une option ajoute).
 Tout passe par ces scripts, lancés sans pipe : un pipe remplace leur code de sortie par celui
 de la dernière commande, et une vérification rouge passe pour verte.
 
@@ -107,7 +108,13 @@ point (**→ point `<nom>`**), exécute la section correspondante de chaque opti
 en a une, puis reprends ici. Une option absente ou inactive ne change rien. Les points :
 
 `avant_la_branche` · `a_l_init` · `apres_challenge` · `apres_plan` · `avant_tfix` ·
-`au_regard` · `au_stage_note` · `avant_gate_merge` · `a_la_cloture`
+`a_l_arbitrage` · `avant_escalade_humaine` · `apres_review_pr` · `au_regard` ·
+`au_stage_note` · `avant_gate_merge` · `a_la_cloture`
+
+Deux de ces points REMPLACENT un geste au lieu de s'y ajouter : à `a_l_arbitrage`, une option
+active qui porte ce point fournit l'arbitre à la place de `codex-arbitrer.sh` ; à
+`avant_escalade_humaine`, elle peut trancher avant que le désaccord monte à l'approbateur.
+Sans option qui les porte, la procédure ci-dessous s'applique telle quelle.
 
 Une option range ses propres données d'état sous `extensions.<nom>`, jamais ailleurs.
 
@@ -374,12 +381,16 @@ Quand il n'y a PLUS de tâche non cochée :
    - `a_escalader` vers `arbitre` : AVANT tout Tfix, écris
      `harness/.travail/relecteur/arbitrage-<clé>.json`
      (`{cle, titre, detail, severite, refutation_codeur, fichier}`, la réfutation étant ce que
-     le codeur a répondu aux rounds précédents) et lance `codex-arbitrer.sh` dessus. Puis
+     le codeur a répondu aux rounds précédents), puis **→ point `a_l_arbitrage`** : sans
+     option qui le porte, lance `codex-arbitrer.sh` dessus. Puis
      `etat.mjs escalade <id> <clé> arbitre --verdict <verdict>`. Selon le verdict :
      - `finding_valide` ou `resolution_recommandee` : Tfix, avec le `correctif_suggere` ;
      - `faux_positif` sur un P2 : `etat.mjs finding <id> <clé> faux_positif --note "arbitre : <justification>"` ;
      - `faux_positif` sur un P0 ou un P1 : l'arbitre ne suffit pas, traite-le comme une
        escalade vers `humain` ;
+   - `a_escalader` vers `tranche` (seulement quand une option porte ce dernier étage) :
+     **→ point `avant_escalade_humaine`**. Si l'option ne tranche pas, traite-le comme une
+     escalade vers `humain` ;
    - `a_escalader` vers `humain` : `etat.mjs escalade <id> <clé> humain --verdict "en attente"`,
      puis `etat.mjs attendre <id> arbitrage --motif "<clé> : ce que dit le relecteur, ce que répond le codeur, ce qu'a dit l'arbitre"`,
      notification de gate, STOP ;
@@ -433,13 +444,16 @@ qui ne démarre pas) est un échec réel.
    l'état et l'artefact de review : commite d'abord. Il signale aussi les fichiers jamais
    ajoutés à Git : si le code relu en dépend, ajoute-les en les nommant, commite et relance.
    Code 1 : aucun artefact, donc aucune certification : échec réel du pas. Code 0 : commit et
-   push de `<specs>/<id>/review-pr.json` et `review-pr.md`, nommés un par un.
+   push de `<specs>/<id>/review-pr.json` et `review-pr.md`, nommés un par un. Puis
+   **→ point `apres_review_pr`** : une option peut ajouter une relecture, toujours APRÈS
+   celle-ci, jamais en même temps.
 3. **Lire le verdict.** `node harness/scripts/review-locale.mjs <id>`.
    - Code 0 : `etat.mjs stage <id>` vers le stage suivant : `REGARD` si `regard_client`, sinon
      `NOTE` si l'option est active, sinon la gate de merge (ci-dessous).
    - Code 3 : lis le motif. Artefact pas commité tel quel : commite-le (fin du point 2) et
      relis. Sinon la review est absente ou périmée (du code a bougé depuis) : reviens au
-     point 2.
+     point 2. Avec une option qui ajoute une relecture, le motif nomme celle qui manque, et la
+     gate dit quoi relancer.
    - Code 2 : l'échelle ci-dessous.
 
 **L'échelle de la review de PR.** `review-locale.mjs <id> --json` liste les findings ouverts
@@ -454,9 +468,11 @@ avec leur clé et leur compteur `survived`.
   ne re-signale plus le finding le ferme seule. Après une re-review rendue en PROSE, rien ne
   se ferme seul : pose toi-même `corrige` sur ce que tu as corrigé, après l'avoir vérifié.
 - Un finding re-signalé après correctif (`survived` au seuil `boucle.seuil_survie`) : arbitre
-  (`codex-arbitrer.sh`, mêmes règles qu'au stage CODE), en notant
-  `review-statut.mjs ... --escalade arbitre`. Désaccord persistant, ou P0 ou P1 que l'arbitre
-  dit faux : `--escalade humain`, `etat.mjs attendre <id> arbitrage`, notification, STOP.
+  (**→ point `a_l_arbitrage`**, sinon `codex-arbitrer.sh`, mêmes règles qu'au stage CODE), en
+  notant `review-statut.mjs ... --escalade arbitre`. Désaccord persistant après l'arbitre :
+  **→ point `avant_escalade_humaine`**. P0 ou P1 que l'arbitre dit faux, ou désaccord qu'aucune
+  option n'a tranché : `--escalade humain`, `etat.mjs attendre <id> arbitrage`, notification,
+  STOP.
 - Un statut posé à tort s'efface : `review-statut.mjs <id> <clé> rouvrir --note "<pourquoi>"`.
   Le finding bloque de nouveau la gate, et c'est le but.
 - Ne modifie jamais `review-pr.md` ni `review-pr.json` à la main : `review-statut.mjs` réécrit
@@ -471,8 +487,9 @@ dans la notification de gate combien de rounds ont tourné et pourquoi tu t'arr�
 `boucle.seuil_escalade_rounds` rounds sans converger, tu ne décides plus seul :
 `etat.mjs attendre <id> arbitrage`.
 
-Ne périment PAS la review : l'artefact lui-même, le fichier d'état, les documents de la story
-écrits par le harness, ses captures, et les fichiers de `chemins.narratifs`. Tout le reste la
+Ne périment PAS la review : l'artefact lui-même (et celui d'une relecture qu'une option
+ajoute), le fichier d'état, les documents de la story écrits par le harness, ses captures, et
+les fichiers de `chemins.narratifs`. Tout le reste la
 périme, y compris une retouche d'une ligne.
 
 ### REGARD (si `regard_client`)
@@ -578,7 +595,8 @@ franchi « en attendant », pas de vérification remplacée par une autre plus f
 3. Seul `etat.mjs` écrit l'état. Un refus de sa part (code 1) est une règle qui s'applique,
    pas un obstacle : lis le message, ne contourne pas en éditant le fichier.
 4. Les relecteurs sont en lecture seule et passent par les scripts. Jamais de `codex` lancé
-   à la main.
+   à la main, ni le CLI d'un relecteur qu'une option ajoute. Jamais un codeur pendant qu'un
+   relecteur tourne dans le même arbre de travail : commit d'abord, relecture ensuite.
 5. Un périmètre de `perimetres_interdits` approché, à n'importe quel stage :
    `etat.mjs attendre <id> scope`, notification de gate, STOP. Aucun agent n'y écrit sans
    une approbation consignée.

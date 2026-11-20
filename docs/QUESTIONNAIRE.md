@@ -184,6 +184,11 @@ Sur H1 : si la réponse est non, l'installation se termine quand même, mais auc
 relecture ne démarrera, et le harness perd ce qui fait sa valeur (un second regard qui ne
 partage pas les angles morts du premier). Mieux vaut le savoir maintenant.
 
+Sur H2 : avec l'option `mistral`, un motif doit avoir un seul sens pour tous les outils : des
+segments entiers (`secrets/`, `**/fixtures/**`, `private/**`, `a/*`) ou une extension seule
+(`*.pem`). Un joker mêlé à du texte (`private*.json`, `docs/*.md`) ou placé au milieu (`a/*/b`)
+est refusé, avec la façon de le réécrire.
+
 Sur H2 : c'est une **consigne**, pas une barrière. Le relecteur lit l'arbre de travail, et
 rien ne l'empêche techniquement d'ouvrir un fichier. Deux protections réelles existent : une
 review de diff refuse de partir si le diff touche un de ces chemins, et un fichier qui ne
@@ -228,6 +233,7 @@ on passe `actif` à `true`, puis on relance `/harness-install`.
 | J2 | **valeur** : veux-tu qu'un arbitre décide, pour chaque défaut trouvé en review, s'il se corrige maintenant, se note pour plus tard, ou se jette ? | `options.valeur.actif` | quels documents disent où en est le projet (`options.valeur.fichiers_situation[]`) ; le plancher te convient-il (`plancher[]`) |
 | J3 | **note_story** : veux-tu une note par story, écrite avant la gate de merge, et un index de toutes les notes ? | `options.note_story.actif` | où vit l'index (`options.note_story.index`) |
 | J4 | **creneaux** (expérimentale) : veux-tu mener deux stories en même temps, dans deux arbres de travail ? | `options.creneaux.actif` | le port de chaque arbre (`ports.a`, `ports.b`) ; ce qu'un seul chantier peut porter à la fois (`ressources_exclusives[]`) ; ce qu'il faut relier dans le second arbre (`liens[]`) |
+| J5 | **mistral** : veux-tu qu'un second service, Mistral, relise la sécurité de chaque PR (la gate l'exigera), arbitre les désaccords et tranche ceux qui durent ? (prérequis : `vibe` 2.13 ou plus et ripgrep ; les motifs de H2 en segments entiers) | `options.mistral.actif` | **l'accord d'envoi à ce second service** (`options.mistral.accord_envoi_externe`, posé comme H1) ; les trois gestes voulus (`securite_pr`, `arbitre`, `tranche_finale`) ; le budget d'une relecture (`plafonds.budget_revue_usd`) ; les fichiers que la relecture sécurité ne relit pas (`exclusions[]`) |
 
 Quelques repères pour répondre :
 
@@ -239,6 +245,16 @@ Quelques repères pour répondre :
   ce qui ne se diffère jamais : relis-le, c'est lui qui rend l'option sûre.
 - **note_story** vaut si quelqu'un d'autre que toi doit comprendre dans six mois pourquoi une
   story a été faite ainsi.
+- **mistral** demande quatre choses sur la machine : ripgrep (`rg`, exigé : sans lui, l'outil de
+  recherche de vibe ne sait plus exclure un dossier interdit), le CLI `vibe` en version 2.13 ou plus, une
+  clé Mistral posée par `vibe --setup` (ou `MISTRAL_API_KEY`), et l'accord d'envoyer le diff à
+  ce fournisseur. Cet accord est distinct de H1 : c'est un autre service, et un « oui » à H1 ne
+  vaut pas ici. L'installateur ne croit pas l'installation sur parole : il lance
+  `mistral-preflight.sh`, puis un appel réel de quelques centimes si tu l'acceptes. Le budget
+  est un plafond par relecture (la relecture refuse de démarrer au-delà), pas une estimation.
+  Les exclusions par défaut écartent le Markdown et les verrous de dépendances : retire
+  `**/*.md` si ton dépôt porte des instructions pour agents en Markdown, elles peuvent cacher
+  une consigne dangereuse.
 - **creneaux** : réponds non à la première installation. Active-la quand une story longue
   bloque les petites. Pour `liens`, les candidats sont le dossier des dépendances installées
   et les réglages locaux de l'outil ; **jamais** un fichier d'environnement qui pointe vers

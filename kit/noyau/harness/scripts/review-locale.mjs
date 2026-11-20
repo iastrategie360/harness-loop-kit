@@ -12,13 +12,19 @@
 // (l'artefact lui-même, l'état, la spec, le rapport de QA) : sans cette règle, enregistrer la
 // review déplacerait le commit courant et la périmerait aussitôt.
 //
+// DEUX ARTEFACTS quand l'option `mistral` exige la relecture sécurité (`options.mistral.actif` et
+// `options.mistral.securite_pr`) : la review de code (`review-pr.json`) et la relecture sécurité
+// (`review-securite.json`, à côté). Les deux verdicts se combinent, le plus prudent l'emporte :
+// une relecture sécurité absente rend donc 3. Écrire l'un ne périme pas l'autre. Option inactive,
+// ou clé absente d'une configuration 1.0.0 : la gate est exactement celle de 1.0.0.
+//
 // Usage : review-locale.mjs <story-id | chemin/vers/artefact.json> [--head <sha>] [--json]
 // Codes : 0, 2, 3 (ci-dessus) ; 64 usage.
 import { readFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, normalize } from "node:path";
-import { calculerExit, findingsOuverts } from "./lib/review-pr-artefact.mjs";
-import { chargerConfig, trouverRacine, cheminArtefactReview, ErreurConfig } from "./lib/config.mjs";
+import { calculerExit, findingsOuverts, cheminArtefactSecurite, combinerVerdicts, estArtefactSecurite } from "./lib/review-pr-artefact.mjs";
+import { chargerConfig, trouverRacine, cheminArtefactReview, securiteExigee, ErreurConfig } from "./lib/config.mjs";
 
 const AVEC_VALEUR = new Set(["--head"]);
 const args = process.argv.slice(2);
@@ -98,6 +104,31 @@ function storyDeLArtefact(chemin) {
 }
 const cheminDisque = join(racine, cheminDepot);
 const artefact = lireArtefact(cheminDisque);
+const avecSecurite = securiteExigee(config);
+// La gate se lance sur la story ou sur l'artefact de CODE : elle trouve elle-même l'artefact
+// sécurité à côté. Lancée sur l'artefact sécurité, elle l'évaluerait deux fois, et la review de
+// code ne serait jamais lue : on refuse.
+if (avecSecurite && estArtefactSecurite(cheminDepot)) {
+  console.error(
+    `usage : ${cheminDepot} est l'artefact de la relecture sécurité. Lancer la gate sur la story, ` +
+      "ou sur l'artefact de la review de code : elle lit l'artefact sécurité à côté.",
+  );
+  process.exit(64);
+}
+const cheminDepotSecurite = avecSecurite ? cheminArtefactSecurite(cheminDepot) : null;
+const artefactSecurite = avecSecurite ? lireArtefact(join(racine, cheminDepotSecurite)) : null;
+// Chaque artefact tolère ses propres fichiers ET ceux de l'autre : commiter la relecture sécurité
+// après la review de code ne périme pas celle-ci, et inversement.
+const cheminsArtefact = [cheminDepot, cheminDepotSecurite]
+  .filter(Boolean)
+  .flatMap((c) => [c, c.replace(/\.json$/, ".md")]);
+const gestion = {
+  etat: chemins.etat,
+  specs: chemins.specs,
+  narratifs,
+  story: storyDeLArtefact(cheminDepot),
+  prefixe: config.git.prefixe_branche,
+};
 
 let head = typeof options["--head"] === "string" ? options["--head"] : null;
 let resultat;
@@ -108,72 +139,91 @@ if (!head) {
     resultat = { code: 3, motif: `commit courant introuvable (${e.message.split("\n")[0]}) : impossible de vérifier la fraîcheur de la review` };
   }
 }
-if (!resultat) {
-  resultat = calculerExit(
-    artefact,
-    head,
-    fichiersDepuis(artefact, head),
-    [cheminDepot, cheminDepot.replace(/\.json$/, ".md")],
-    {
-      etat: chemins.etat,
-      specs: chemins.specs,
-      narratifs,
-      story: storyDeLArtefact(cheminDepot),
-      prefixe: config.git.prefixe_branche,
-    },
-  );
-}
 
 // Une gate verte certifie ce que la branche PORTE. Un artefact absent du commit évalué, ou
 // différent sur le disque (un statut posé et pas encore commité), ne certifie rien : la
 // personne qui approuve lirait sur la branche un finding encore ouvert.
-function artefactCommite() {
+function artefactCommite(chemin) {
   try {
-    return git("rev-parse", "--verify", "--quiet", `${head}:${cheminDepot}`) === git("hash-object", "--", cheminDepot);
+    return git("rev-parse", "--verify", "--quiet", `${head}:${chemin}`) === git("hash-object", "--", chemin);
   } catch {
     return false;
   }
 }
-let aCommiter = false;
-if (resultat.code === 0 && !artefactCommite()) {
-  aCommiter = true;
-  resultat = { code: 3, motif: "l'artefact sur le disque n'est pas celui du commit : la gate ne certifie que ce qui est commité" };
+const aCommiter = [];
+function verdictDe(art, chemin) {
+  let v = calculerExit(art, head, fichiersDepuis(art, head), cheminsArtefact, gestion);
+  if (v.code === 0 && !artefactCommite(chemin)) {
+    aCommiter.push(chemin);
+    v = { code: 3, motif: "l'artefact sur le disque n'est pas celui du commit : la gate ne certifie que ce qui est commité" };
+  }
+  return v;
+}
+let verdictCode = null;
+let verdictSecurite = null;
+if (!resultat) {
+  verdictCode = verdictDe(artefact, cheminDepot);
+  if (avecSecurite) {
+    verdictSecurite = verdictDe(artefactSecurite, cheminDepotSecurite);
+    resultat = combinerVerdicts(verdictCode, verdictSecurite);
+  } else {
+    resultat = verdictCode;
+  }
 }
 
-const ouverts = artefact && resultat.code !== 3 ? findingsOuverts(artefact) : [];
+const ouvertsDe = (art, v) => (art && v && v.code !== 3 ? findingsOuverts(art) : []);
+const ouverts = avecSecurite
+  ? [
+    ...ouvertsDe(artefact, verdictCode).map((f) => ({ ...f, source: "code" })),
+    ...ouvertsDe(artefactSecurite, verdictSecurite).map((f) => ({ ...f, source: "securite" })),
+  ]
+  : artefact && resultat.code !== 3 ? findingsOuverts(artefact) : [];
 if (options["--json"]) {
-  console.log(
-    JSON.stringify(
-      {
-        artefact: cheminDepot,
-        existe: artefact !== null,
-        head_courant: head,
-        head_reviewe: artefact?.head_sha ?? null,
-        a_jour: artefact !== null && artefact?.head_sha === head,
-        exit: resultat.code,
-        motif: resultat.motif,
-        open_p0_p2: ouverts.length,
-        rounds: artefact?.rounds ?? 0,
-        findings: ouverts.map((f) => ({
-          cle: f.cle, severity: f.severity, file: f.file, lines: f.lines, titre: f.titre, survived: f.survived ?? 0,
-        })),
-      },
-      null,
-      2,
-    ),
-  );
+  const sortie = {
+    artefact: cheminDepot,
+    existe: artefact !== null,
+    head_courant: head,
+    head_reviewe: artefact?.head_sha ?? null,
+    a_jour: artefact !== null && artefact?.head_sha === head,
+    exit: resultat.code,
+    motif: resultat.motif,
+    open_p0_p2: ouverts.length,
+    rounds: artefact?.rounds ?? 0,
+    findings: ouverts.map((f) => ({
+      cle: f.cle, severity: f.severity, file: f.file, lines: f.lines, titre: f.titre, survived: f.survived ?? 0,
+      ...(avecSecurite ? { source: f.source } : {}),
+    })),
+  };
+  if (avecSecurite) {
+    sortie.securite = {
+      artefact: cheminDepotSecurite,
+      existe: artefactSecurite !== null,
+      head_reviewe: artefactSecurite?.head_sha ?? null,
+      exit: verdictSecurite?.code ?? 3,
+      motif: verdictSecurite?.motif ?? resultat.motif,
+      rounds: artefactSecurite?.rounds ?? 0,
+    };
+  }
+  console.log(JSON.stringify(sortie, null, 2));
 } else {
   const etiquette = { 0: "OK", 2: "FINDINGS", 3: "ABSENTE" }[resultat.code];
-  console.log(`review locale [${etiquette}] ${cheminDepot} : ${resultat.motif}`);
+  const nommes = avecSecurite ? `${cheminDepot} + ${cheminDepotSecurite}` : cheminDepot;
+  console.log(`review locale [${etiquette}] ${nommes} : ${resultat.motif}`);
   for (const f of ouverts) {
     const ligne = Array.isArray(f.lines) && f.lines[0] ? `:${f.lines[0]}` : "";
-    console.log(`  ${f.severity} ${f.file}${ligne} : ${f.titre}`);
+    const origine = avecSecurite ? `[${f.source === "securite" ? "sécurité" : "code"}] ` : "";
+    console.log(`  ${origine}${f.severity} ${f.file}${ligne} : ${f.titre}`);
   }
-  if (aCommiter) {
-    console.log(`  Pour certifier : commiter ${cheminDepot} et son .md, nommés un par un, puis relancer cette gate.`);
-  } else if (resultat.code === 3) {
-    const relance = cible.endsWith(".json") ? "--branche" : cible;
+  const relance = cible.endsWith(".json") ? "--branche" : cible;
+  if (aCommiter.length > 0) {
+    for (const c of aCommiter) {
+      console.log(`  Pour certifier : commiter ${c} et son .md, nommés un par un, puis relancer cette gate.`);
+    }
+  } else if (resultat.code === 3 && (!verdictCode || verdictCode.code === 3)) {
     console.log(`  Pour (re)lancer la review : bash harness/scripts/review-pr-locale.sh ${relance}`);
+  }
+  if (avecSecurite && verdictSecurite?.code === 3 && !aCommiter.includes(cheminDepotSecurite)) {
+    console.log(`  Pour (re)lancer la relecture sécurité, APRÈS la review de code : bash harness/scripts/mistral-securite.sh ${relance}`);
   }
 }
 process.exit(resultat.code);

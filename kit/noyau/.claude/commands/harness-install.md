@@ -43,7 +43,8 @@ rubrique « reste à compléter », avec la décision que tu as prise à la plac
 continues. Quatre choses ne changent pas :
 
 - un `MANQUE` du contrôle, un test du harness en échec ou un code imprévu restent un STOP ;
-- l'accord d'envoi au relecteur et l'application des permissions ne se déduisent jamais ;
+- l'accord d'envoi au relecteur (et celui de l'option `mistral`, s'il y a lieu) et
+  l'application des permissions ne se déduisent jamais ;
 - une commande rouge reste « non prouvée » : tu ne la corriges pas et tu ne la déclares pas
   en base rouge de ton propre chef ;
 - rien n'est commité.
@@ -148,7 +149,10 @@ Trois lots demandent plus que de noter la réponse :
 - **Lot H (relecteur)** : la question H1 est un accord, pas un réglage. Pose-la telle quelle,
   sans la pré-remplir, et dis ce que vaut un « non ». N'écris `true` que sur un oui explicite.
 - **Lot J (options)** : une question par option, avec ce qu'elle coûte et ce qu'elle apporte.
-  Pour `creneaux`, la réponse conseillée à une première installation est non.
+  Pour `creneaux`, la réponse conseillée à une première installation est non. Pour `mistral`,
+  sa sous-question d'accord (`options.mistral.accord_envoi_externe`) se pose comme H1 : telle
+  quelle, sans la pré-remplir, et seulement un oui explicite vaut `true`. Un oui à H1 ne vaut
+  pas pour ce second service.
 
 **Mode `--reponses <fichier>`** : lis le fichier, valide sa forme (fin du questionnaire),
 copie-le dans `harness/install/reponses.json`, et ne pose que ce qui manque. N'y entrent
@@ -160,7 +164,8 @@ défaut celle de l'exemple, et chaque valeur ainsi prise sans confirmation est l
 compte rendu. Trois réserves, même dans ce mode :
 
 - `relecteur.accord_envoi_externe` ne se déduit jamais (absent, il vaut `false`), ni
-  l'application de l'allowlist (absente, elle vaut « non ») ;
+  `options.mistral.accord_envoi_externe`, ni l'application de l'allowlist (absente, elle vaut
+  « non ») ;
 - certaines valeurs de l'exemple sont des **illustrations**, pas des défauts : le contenu de
   `projet.regles_style` et de `rigueur.declencheurs`. Sans réponse ni détection, ces deux
   listes restent VIDES, et le compte rendu le dit en premier pour les déclencheurs : sans
@@ -225,6 +230,25 @@ l'index des notes se crée seul à la première story) :
   et fais-les relire : une fiche inventée produit des objections inventées.
 - **creneaux** : relis avec l'utilisateur la liste `options.creneaux.liens`. Jamais un
   fichier d'environnement qui vise la production.
+- **mistral** : prouve la commande au lieu de la croire.
+
+  ```bash
+  bash harness/scripts/mistral-preflight.sh
+  ```
+
+  Il contrôle, sans rien envoyer, l'accord, le CLI `vibe` et sa version (2.13 ou plus), la
+  PRÉSENCE de la clé (jamais sa valeur : tu ne l'ouvres pas, tu ne l'affiches pas), le profil de
+  lecture seule et les valeurs de `options.mistral`. Un refus : rapporte le motif tel quel
+  (installer `vibe`, lancer `vibe --setup`), et propose de couper l'option plutôt que de
+  continuer avec une gate de PR qui ne pourra jamais rendre 0. Puis, si l'utilisateur accepte
+  un appel de quelques centimes :
+
+  ```bash
+  bash harness/scripts/mistral-preflight.sh --appel
+  ```
+
+  Code 0 : Mistral répond, la clé et le réseau marchent. Sans cet appel, le compte rendu écrit
+  « relecture sécurité : non prouvée (appel réel non fait) ».
 
 Contrôle enfin que le harness tient debout sur cette machine :
 
@@ -409,7 +433,8 @@ pièces marchent ENSEMBLE ici. Dans la suite, `<specs>` et `<etat>` valent `chem
    (`jq '.fichiers | length' harness/kit-installe.json`), fichier de permissions visé ou
    « aucun ».
 2. **Prouvé** : chaque commande avec son code et sa durée (`gate.sh --liste`), le banc, les
-   tests du harness, le relecteur, la notification. Pour chacun : prouvé, base rouge, ou NON
+   tests du harness, le relecteur, la notification, et, avec l'option `mistral`, son préflight
+   et son appel réel. Pour chacun : prouvé, base rouge, ou NON
    PROUVÉ avec la raison. Pas de formule vague : une chose est prouvée ou ne l'est pas.
 3. **Reste à compléter** : chaque « je ne sais pas », chaque valeur prise par défaut sans
    confirmation, la garde de production si elle est vide, la capture si elle manque, la
@@ -452,6 +477,11 @@ node harness/.kit/noyau/harness/scripts/kit-poser.mjs plan
   l'ancienne n'avait pas, et le refus la nomme. Pose la question correspondante
   (`harness/.kit/docs/QUESTIONNAIRE.md`), ajoute la clé, revalide. Tu ne modifies rien
   d'autre dans `harness/projet.json`.
+  Une configuration posée en 1.0.0 n'a pas la clé `options.mistral` : ce n'est PAS ce cas.
+  Elle reste valide, et le harness s'y comporte exactement comme en 1.0.0. N'ajoute la clé que
+  si l'utilisateur veut l'option : recopie alors le bloc `options.mistral` de
+  `harness/.kit/noyau/harness/projet.exemple.json`, pose la question J5 et ses
+  sous-questions, revalide, puis traite l'option comme « nouvellement activée » ci-dessous.
 - **`mode : à jour`** : rien à poser. Dis-le, et propose seulement de rejouer les preuves
   (étape 5) ou l'essai à blanc (étape 7) si l'utilisateur doute de son installation.
 - **`mode : mise à jour`** ou **`mode : réparation`** (un fichier manque, ou une option vient

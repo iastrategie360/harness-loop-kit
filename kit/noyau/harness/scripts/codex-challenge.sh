@@ -10,6 +10,7 @@
 # Codes : 0 challenge écrit ; 1 échec (rien n'est écrit) ; 5 le relecteur a écrit ; 64 usage.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/codex-common.sh"
+relecteur_sous_verrou "${BASH_SOURCE[0]}" "$@"
 
 SPEC="${1:-}"
 if [[ -z "$SPEC" ]]; then

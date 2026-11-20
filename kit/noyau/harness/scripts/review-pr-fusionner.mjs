@@ -11,11 +11,17 @@
 // Usage : review-pr-fusionner.mjs --artefact <review-pr.json> --brut <fichier>
 //           [--jsonl <fichier>] --head-sha <sha> --branche <nom> --base <nom>
 //           [--modele <nom>] [--racine <dossier>] [--date <ISO>]
+//           [--source securite --attestation <fichier>]
+//
+// `--source securite` (option `mistral`) : la relecture sécurité, rendue dans son propre
+// artefact. Elle n'a pas de flux d'événements : la preuve d'une relecture menée au bout est
+// l'ATTESTATION que son producteur écrit après avoir validé chaque lot
+// (`{lots_total, lots_relus, exclus, fichiers}`). Sans attestation recevable, rien n'est écrit.
 // Codes : 0 artefact écrit (json puis md) ; 1 rien n'est écrit ; 64 usage.
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
-  parseSortieCodex, fusionner, findingsOuverts, genererMarkdown, libelleExtraction,
+  parseSortieCodex, fusionner, findingsOuverts, genererMarkdown, libelleExtraction, preuvesDeLAttestation,
 } from "./lib/review-pr-artefact.mjs";
 import { ecrireJson, maintenant } from "./lib/config.mjs";
 
@@ -30,10 +36,16 @@ const cheminJsonl = arg("--jsonl");
 const headSha = arg("--head-sha");
 const branche = arg("--branche");
 const base = arg("--base");
-if (!cheminArtefact || !cheminBrut || !headSha || !branche || !base || !cheminArtefact.endsWith(".json")) {
+const source = arg("--source");
+const cheminAttestation = arg("--attestation");
+if (
+  !cheminArtefact || !cheminBrut || !headSha || !branche || !base || !cheminArtefact.endsWith(".json") ||
+  (source !== null && source !== "securite") || (source === "securite") !== (cheminAttestation !== null)
+) {
   console.error(
     "usage : review-pr-fusionner.mjs --artefact <review-pr.json> --brut <fichier> [--jsonl <fichier>] " +
-      "--head-sha <sha> --branche <nom> --base <nom> [--modele <nom>] [--racine <dossier>] [--date <ISO>]",
+      "--head-sha <sha> --branche <nom> --base <nom> [--modele <nom>] [--racine <dossier>] [--date <ISO>] " +
+      "[--source securite --attestation <fichier>]",
   );
   process.exit(64);
 }
@@ -42,10 +54,29 @@ const racine = arg("--racine", process.cwd());
 const date = arg("--date", maintenant());
 
 const lireSiPresent = (chemin) => (chemin && existsSync(chemin) ? readFileSync(chemin, "utf8") : "");
+let preuvesImposees = null;
+if (source === "securite") {
+  let attestation = null;
+  try {
+    attestation = JSON.parse(lireSiPresent(cheminAttestation));
+  } catch {
+    attestation = null;
+  }
+  const { preuves, motif: refus } = preuvesDeLAttestation(attestation);
+  if (!preuves) {
+    console.error(
+      `review-pr-fusionner : attestation de relecture NON RECEVABLE (${cheminAttestation}) : ${refus}. ` +
+        "Rien n'a été écrit, la gate reste bloquante.",
+    );
+    process.exit(1);
+  }
+  preuvesImposees = preuves;
+}
 const { findings, synthese, extraction, exploitable, motif } = parseSortieCodex(
   lireSiPresent(cheminBrut),
   lireSiPresent(cheminJsonl),
   racine,
+  preuvesImposees,
 );
 if (!exploitable) {
   console.error(
@@ -69,7 +100,7 @@ if (existsSync(cheminArtefact)) {
   }
 }
 
-const artefact = fusionner(ancien, findings, { headSha, date, modele, synthese, extraction, branche, base });
+const artefact = fusionner(ancien, findings, { headSha, date, modele, synthese, extraction, branche, base, source });
 const cheminMarkdown = cheminArtefact.replace(/\.json$/, ".md");
 mkdirSync(dirname(cheminArtefact), { recursive: true });
 ecrireJson(cheminArtefact, artefact);

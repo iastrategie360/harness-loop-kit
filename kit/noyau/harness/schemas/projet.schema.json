@@ -30,7 +30,18 @@
       }
     },
     "liste_textes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-    "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+    "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "modele_mistral": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "description": "Nom du modèle tel que l'API le liste. Il part dans du JSON : aucun caractère de syntaxe." },
+    "prix_modele": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entree", "sortie"],
+      "description": "Prix catalogue en USD par million de jetons. Un prix nul rendrait le plafond de coût inerte : il est refusé.",
+      "properties": {
+        "entree": { "type": "number", "minimum": 0.001 },
+        "sortie": { "type": "number", "minimum": 0.001 }
+      }
+    }
   },
   "type": "object",
   "additionalProperties": false,
@@ -268,6 +279,57 @@
             },
             "ressources_exclusives": { "$ref": "#/$defs/liste_textes", "description": "Chemins qu'un seul chantier peut porter à la fois (migrations numérotées, documents transverses)." },
             "liens": { "$ref": "#/$defs/liste_textes", "description": "Fichiers ou dossiers non versionnés à relier dans le second arbre de travail (dépendances installées, fichiers d'environnement)." }
+          }
+        },
+        "mistral": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Option arrivée en 1.1.0, donc NON requise : une configuration 1.0.0 sans cette clé reste valide, et le noyau s'y comporte comme en 1.0.0.",
+          "required": ["actif", "accord_envoi_externe", "securite_pr", "arbitre", "tranche_finale", "modeles", "prix", "temperature", "plafonds", "exclusions"],
+          "properties": {
+            "actif": { "type": "boolean" },
+            "accord_envoi_externe": { "type": "boolean", "description": "Accord d'envoyer le diff et des extraits du dépôt au fournisseur Mistral. Distinct de relecteur.accord_envoi_externe : c'est un autre service." },
+            "securite_pr": { "type": "boolean", "description": "La gate de PR exige aussi la relecture sécurité." },
+            "arbitre": { "type": "boolean", "description": "L'étage arbitre de l'échelle d'escalade passe par Mistral au lieu du relecteur de code." },
+            "tranche_finale": { "type": "boolean", "description": "Un étage de tranche finale contraignante s'insère avant l'escalade humaine. Exige arbitre." },
+            "modeles": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["relecture", "tranche"],
+              "properties": {
+                "relecture": { "$ref": "#/$defs/modele_mistral", "description": "Relecture sécurité et arbitre." },
+                "tranche": { "$ref": "#/$defs/modele_mistral", "description": "Tranche finale : un AUTRE modèle que l'arbitre, pour un avis distinct." }
+              }
+            },
+            "prix": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["relecture", "tranche"],
+              "properties": {
+                "relecture": { "$ref": "#/$defs/prix_modele" },
+                "tranche": { "$ref": "#/$defs/prix_modele" }
+              }
+            },
+            "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+            "plafonds": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["prix_session_usd", "tours_session", "delai_session_s", "delai_appel_s", "budget_revue_usd", "essais", "parallele", "taille_lot_octets", "prix_tranche_usd", "tours_tranche", "delai_tranche_s"],
+              "properties": {
+                "prix_session_usd": { "type": "number", "minimum": 0.001, "description": "Plafond de coût d'UNE session (un lot de diff, ou un arbitrage)." },
+                "tours_session": { "type": "integer", "minimum": 1 },
+                "delai_session_s": { "type": "integer", "minimum": 1 },
+                "delai_appel_s": { "type": "integer", "minimum": 1, "description": "Délai d'un appel HTTP au modèle." },
+                "budget_revue_usd": { "type": "number", "minimum": 0.001, "description": "Plafond GLOBAL d'une relecture découpée : elle refuse de démarrer si lots x prix de session x essais le dépasse." },
+                "essais": { "type": "integer", "minimum": 1, "maximum": 5, "description": "Essais par session, nouvel essai sur un échec transitoire seulement." },
+                "parallele": { "type": "integer", "minimum": 1, "maximum": 16 },
+                "taille_lot_octets": { "type": "integer", "minimum": 4096, "maximum": 100000 },
+                "prix_tranche_usd": { "type": "number", "minimum": 0.001 },
+                "tours_tranche": { "type": "integer", "minimum": 1 },
+                "delai_tranche_s": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "exclusions": { "$ref": "#/$defs/liste_textes", "description": "Motifs de fichiers du diff que la relecture sécurité ne relit pas, parce qu'ils ne changent aucun comportement. Ils sont nommés dans l'artefact." }
           }
         }
       }

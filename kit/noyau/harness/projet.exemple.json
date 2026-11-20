@@ -1,5 +1,5 @@
 {
-  "kit": { "version": "1.0.0", "schema_etat": 1 },
+  "kit": { "version": "1.1.0", "schema_etat": 1 },
   "projet": {
     "nom": "Mon projet",
     "description": "Une phrase : ce que fait le produit, et pour qui.",
@@ -76,6 +76,30 @@
     "valeur": { "actif": false, "fichiers_situation": [] },
     "personas": { "actif": false, "dossier": "harness/personas" },
     "note_story": { "actif": false, "index": "specs/INDEX.md" },
-    "creneaux": { "actif": false, "ports": { "a": null, "b": null }, "ressources_exclusives": [], "liens": [] }
+    "creneaux": { "actif": false, "ports": { "a": null, "b": null }, "ressources_exclusives": [], "liens": [] },
+    "mistral": {
+      "actif": false,
+      "accord_envoi_externe": false,
+      "securite_pr": true,
+      "arbitre": true,
+      "tranche_finale": true,
+      "modeles": { "relecture": "mistral-large-4", "tranche": "mistral-medium-3.5" },
+      "prix": { "relecture": { "entree": 1.36, "sortie": 4.18 }, "tranche": { "entree": 1.5, "sortie": 7.5 } },
+      "temperature": 0.2,
+      "plafonds": {
+        "prix_session_usd": 0.5,
+        "tours_session": 15,
+        "delai_session_s": 1800,
+        "delai_appel_s": 1500,
+        "budget_revue_usd": 25,
+        "essais": 2,
+        "parallele": 4,
+        "taille_lot_octets": 45000,
+        "prix_tranche_usd": 0.5,
+        "tours_tranche": 8,
+        "delai_tranche_s": 900
+      },
+      "exclusions": ["**/*.md", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"]
+    }
   }
 }

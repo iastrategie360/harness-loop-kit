@@ -116,7 +116,7 @@ function cheminRelatif(fichier, racine) {
  *
  * @returns {{findings: Array, synthese: string, extraction: "schema"|"jsonl"|"markdown"|"vide", exploitable: boolean, motif: string}}
  */
-export function parseSortieCodex(brut, jsonl, racine = "") {
+export function parseSortieCodex(brut, jsonl, racine = "", preuvesImposees = null) {
   // Une reponse STRUCTUREE qu'on ne sait pas lire en entier n'est pas une review propre, et ce
   // n'est pas de la prose non plus : on ne retombe pas sur le niveau suivant, on refuse.
   const illisible = (niveau) => ({
@@ -126,7 +126,10 @@ export function parseSortieCodex(brut, jsonl, racine = "") {
     exploitable: false,
     motif: "la reponse structuree porte un element qu'on ne sait pas lire comme un finding",
   });
-  const preuves = preuvesDuFlux(jsonl);
+  // Un producteur sans flux d'evenements (la relecture securite de l'option `mistral`) apporte
+  // ses propres preuves, tirees de son attestation (cf. `preuvesDeLAttestation`). Sans elles, on
+  // retombe sur le flux : rien n'est jamais tenu pour acquis par defaut.
+  const preuves = preuvesImposees ?? preuvesDuFlux(jsonl);
   const structure = (resultat, niveau) => {
     const manque = resultat.findings.length === 0 ? preuveManquante(preuves) : "";
     return { ...resultat, extraction: niveau, exploitable: manque === "", motif: manque };
@@ -221,6 +224,35 @@ function preuveManquante(preuves) {
     return "aucune commande reussie dans le flux : rien ne prouve que le relecteur a lu le depot";
   }
   return "";
+}
+
+/**
+ * Les preuves d'une relecture DECOUPEE EN LOTS, tirees de l'attestation que son producteur ecrit
+ * apres avoir valide chaque lot (option `mistral`, `mistral-securite.sh`).
+ *
+ * Un tel relecteur n'a pas de flux d'evenements : la preuve d'une relecture menee au bout est que
+ * CHAQUE lot a rendu une reponse conforme au schema. Une attestation partielle (un lot de moins
+ * que prevu) ne prouve rien : une relecture a laquelle manque un lot n'est pas une relecture.
+ * Zero lot n'est recevable que si le diff etait entierement exclu, et que l'attestation nomme les
+ * fichiers exclus : c'est la seule facon d'arriver la sans avoir rien lu par erreur.
+ *
+ * @returns {{preuves: object|null, motif: string}} `preuves` a null quand l'attestation ne prouve rien
+ */
+export function preuvesDeLAttestation(attestation) {
+  const refus = (motif) => ({ preuves: null, motif });
+  if (attestation === null || typeof attestation !== "object" || Array.isArray(attestation)) {
+    return refus("attestation absente ou illisible");
+  }
+  const { lots_total: total, lots_relus: relus, exclus = [], fichiers = [] } = attestation;
+  if (!Number.isInteger(total) || !Number.isInteger(relus) || total < 0 || relus < 0) {
+    return refus("attestation sans compte de lots entier");
+  }
+  if (!Array.isArray(exclus) || !Array.isArray(fichiers)) return refus("attestation sans liste de fichiers");
+  if (relus !== total) return refus(`${relus} lot(s) relu(s) sur ${total} : une relecture a laquelle manque un lot n'en est pas une`);
+  if (total === 0 && (exclus.length === 0 || fichiers.length > 0)) {
+    return refus("zero lot relu sans que le diff soit entierement exclu");
+  }
+  return { preuves: { tourAcheve: true, commandeReussie: true }, motif: "" };
 }
 
 // Ce que rend un niveau structure quand il reconnait sa forme mais ne sait pas la lire en entier.
@@ -531,6 +563,9 @@ export function fusionner(ancien, nouveaux, contexte) {
   artefact.head_sha = headSha;
   artefact.date = date;
   artefact.modele = modele;
+  // Source de l'artefact : absente pour la review de code, `securite` pour la relecture securite
+  // de l'option `mistral`. Elle ne sert qu'au rendu : la gate lit chaque artefact par son CHEMIN.
+  if (contexte.source) artefact.source = contexte.source;
   // Note portee PAR l'artefact, a l'attention de tout relecteur (humain ou reviewer automatique).
   // L'artefact fait partie du diff de la branche : chaque review le relit et constate que son
   // `head_sha` est en retard sur HEAD, puisque le commit qui enregistre une review vient
@@ -778,12 +813,21 @@ export function genererMarkdown(artefact) {
   );
 
   const l = [];
-  l.push(`# Review de PR (locale) : ${artefact.branche}`);
-  l.push("");
-  l.push(
-    "> Review produite par le CLI du relecteur, sur la machine. Ce fichier est GÉNÉRÉ depuis " +
-      "`review-pr.json` : ne l'édite pas à la main.",
-  );
+  if (artefact.source === "securite") {
+    l.push(`# Relecture sécurité de PR (locale) : ${artefact.branche}`);
+    l.push("");
+    l.push(
+      "> Relecture SÉCURITÉ produite par l'option `mistral`, à côté de la review de code. Ce " +
+        "fichier est GÉNÉRÉ depuis son artefact JSON : ne l'édite pas à la main.",
+    );
+  } else {
+    l.push(`# Review de PR (locale) : ${artefact.branche}`);
+    l.push("");
+    l.push(
+      "> Review produite par le CLI du relecteur, sur la machine. Ce fichier est GÉNÉRÉ depuis " +
+        "`review-pr.json` : ne l'édite pas à la main.",
+    );
+  }
   l.push("");
   l.push(`- Base : \`${artefact.base}\``);
   l.push(`- Dernier commit relu : \`${String(artefact.head_sha ?? "").slice(0, 7)}\``);
@@ -835,4 +879,47 @@ export function genererMarkdown(artefact) {
   }
   l.push("");
   return l.join("\n");
+}
+
+/**
+ * Chemin de l'artefact de RELECTURE SECURITE (option `mistral`) associe a un artefact de review
+ * de code :
+ *
+ *   <specs>/<id>/review-pr.json     -> <specs>/<id>/review-securite.json
+ *   <reviews>/<branche>.json        -> <reviews>/<branche>.securite.json
+ *
+ * Deux artefacts distincts plutot qu'une source de plus dans le meme : la fusion ferme
+ * AUTOMATIQUEMENT un finding absent d'une re-review structuree (cas 3 de `fusionner`). Dans un
+ * artefact partage, une relecture securite propre fermerait tous les findings ouverts de la review
+ * de code, et inversement : le faux vert que cette chaine s'interdit. Separes, chaque producteur ne
+ * ferme que ce qu'il a lui-meme relu.
+ */
+export function estArtefactSecurite(chemin) {
+  return /(^|\/)review-securite\.json$/.test(String(chemin ?? "")) || String(chemin ?? "").endsWith(".securite.json");
+}
+
+export function cheminArtefactSecurite(cheminCode) {
+  const c = String(cheminCode ?? "");
+  if (/(^|\/)review-pr\.json$/.test(c)) return c.replace(/review-pr\.json$/, "review-securite.json");
+  if (estArtefactSecurite(c)) return c;
+  return `${c.replace(/\.json$/, "")}.securite.json`;
+}
+
+/**
+ * Combine les verdicts des deux gates (code et securite). Le plus PRUDENT l'emporte : 3 (l'une des
+ * deux manque, est perimee ou n'est pas commitee) avant 2 (un bloquant ouvert) avant 0. Un code
+ * inconnu vaut 3. Aucune des deux ne peut donc masquer l'autre : une review de code propre ne
+ * certifie pas une PR dont la relecture securite manque, et reciproquement.
+ */
+export function combinerVerdicts(code, securite) {
+  const rang = (c) => ({ 0: 0, 2: 1, 3: 2 })[c] ?? 2;
+  const pire = Math.max(rang(code.code), rang(securite.code));
+  return {
+    code: [0, 2, 3][pire],
+    motif: `code : ${code.motif} ; sécurité : ${securite.motif}`,
+    ouverts: [
+      ...(code.ouverts ?? []).map((f) => ({ ...f, source: "code" })),
+      ...(securite.ouverts ?? []).map((f) => ({ ...f, source: "securite" })),
+    ],
+  };
 }

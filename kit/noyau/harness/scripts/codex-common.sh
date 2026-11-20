@@ -23,6 +23,22 @@
 
 SCHEMAS="$SCRIPTS/../schemas"
 CODE_RELECTEUR_A_ECRIT=5
+
+# relecteur_sous_verrou "${BASH_SOURCE[0]}" "$@" : relance le script appelant sous le verrou des
+# relecteurs de CE checkout, puis sort avec son code. Deux relecteurs dans le même arbre de
+# travail ne tournent jamais ensemble : chacun compare le dépôt avant et après son appel, et
+# l'artefact que l'autre écrit en fin de course passerait pour une écriture du premier. Le
+# verrou est PAR CHECKOUT (dans harness/.travail) : un second arbre de travail garde le sien.
+# Les relecteurs d'une option (`mistral`) prennent le même verrou : une garde à deux côtés.
+relecteur_sous_verrou() {
+  [[ "${HARNESS_VERROU_RELECTEUR:-}" == "$RACINE" ]] && return 0
+  command -v flock >/dev/null || refuser "outil manquant : flock"
+  mkdir -p "$TRAVAIL"
+  export HARNESS_VERROU_RELECTEUR="$RACINE"
+  local code=0
+  flock "$TRAVAIL/relecteur.verrou" bash "$@" || code=$?
+  exit "$code"
+}
 # `exec review` n'accepte pas `-s` : la lecture seule passe par la configuration du CLI.
 CODEX_LECTURE_SEULE=(-c 'sandbox_mode="read-only"')
 CODEX_MODELE=""
@@ -213,28 +229,76 @@ codex_base_ref() {
   return 1
 }
 
+# chemin_couvert_par <fichier> <motif> : vrai si le motif de relecteur.chemins_exclus couvre le
+# fichier. Le motif est un joker du shell (« * » y traverse les « / ») ; un nom de dossier couvre
+# tout ce qu'il contient ; « **/x » couvre AUSSI « x » à la racine (en joker du shell, « **/ »
+# exigerait au moins un dossier, et un exclu de premier niveau partirait).
+chemin_couvert_par() {
+  local fichier="$1" motif="$2" reste
+  # shellcheck disable=SC2053
+  if [[ "$fichier" == $motif || "$fichier" == "${motif%/}"/* ]]; then return 0; fi
+  if [[ "$motif" == '**/'* ]]; then
+    reste="${motif#\*\*/}"
+    # shellcheck disable=SC2053
+    if [[ "$fichier" == $reste || "$fichier" == "${reste%/}"/* ]]; then return 0; fi
+  fi
+  return 1
+}
+
+# chemin_exclu <fichier> : vrai si un motif de relecteur.chemins_exclus le couvre.
+chemin_exclu() {
+  local motif
+  while IFS= read -r motif; do
+    [[ -n "$motif" ]] || continue
+    if chemin_couvert_par "$1" "$motif"; then return 0; fi
+  done < <(cfg_lignes .relecteur.chemins_exclus)
+  return 1
+}
+
+# codex_derives_exclus <base_ref> : les chemins de la branche qui sont la COPIE ou le DÉPLACEMENT
+# d'un fichier exclu, séparés par un octet nul. Un tel chemin porte le contenu exclu sous un nom
+# libre. --find-copies-harder : sans lui, Git ne cherche la source d'une copie que parmi les
+# fichiers MODIFIÉS par la branche, et la copie d'un exclu laissé intact passe pour un ajout.
+# LIMITE, à dire honnêtement : l'exclusion protège des CHEMINS, pas du contenu. Une copie
+# retouchée sous le seuil de similarité de Git, ou un contenu recollé à la main dans un autre
+# fichier, n'est pas détecté. Un fichier qui ne doit jamais sortir n'a pas sa place dans le dépôt.
+codex_derives_exclus() {
+  local base_ref="$1" statut source dest
+  while IFS= read -r -d '' statut; do
+    case "$statut" in
+      R* | C*)
+        IFS= read -r -d '' source || break
+        IFS= read -r -d '' dest || break
+        if chemin_exclu "$source" && ! chemin_exclu "$dest"; then printf '%s\0' "$dest"; fi
+        ;;
+      *) IFS= read -r -d '' source || break ;;
+    esac
+  done < <(git -C "$RACINE" diff -M -C --find-copies-harder --name-status -z "$base_ref"...HEAD 2>/dev/null)
+}
+
 # codex_diff_touche_exclus <base_ref> : rend 0 et nomme les fichiers si le diff touche un
-# chemin de relecteur.chemins_exclus. Une review de diff envoie le diff : elle ne part pas.
+# chemin de relecteur.chemins_exclus, ou en porte une copie ou un déplacement. Une review de diff
+# envoie le diff : elle ne part pas.
 codex_diff_touche_exclus() {
   local base_ref="$1" fichier motif touche=1
-  local motifs=()
-  while IFS= read -r motif; do
-    [[ -n "$motif" ]] && motifs+=("$motif")
-  done < <(cfg_lignes .relecteur.chemins_exclus)
-  ((${#motifs[@]} > 0)) || return 1
+  [[ -n "$(cfg_lignes .relecteur.chemins_exclus)" ]] || return 1
   # --no-renames : un fichier exclu DÉPLACÉ vers un chemin libre ne paraîtrait que sous son
   # nouveau nom, et son contenu partirait. Sans détection, Git nomme les deux côtés.
   # -z : les noms arrivent bruts, sans les guillemets que Git met autour d'un nom inhabituel.
   while IFS= read -r -d '' fichier; do
-    for motif in "${motifs[@]}"; do
-      # Le motif est un joker ; un nom de dossier couvre tout ce qu'il contient.
-      # shellcheck disable=SC2053
-      if [[ "$fichier" == $motif || "$fichier" == "${motif%/}"/* ]]; then
+    while IFS= read -r motif; do
+      [[ -n "$motif" ]] || continue
+      if chemin_couvert_par "$fichier" "$motif"; then
         echo "  $fichier (exclu par « $motif »)" >&2
         touche=0
       fi
-    done
+    done < <(cfg_lignes .relecteur.chemins_exclus)
   done < <(git -C "$RACINE" diff --no-renames --name-only -z "$base_ref"...HEAD)
+  # Une COPIE d'un exclu resté intact n'apparaît pas sous le nom exclu : on la cherche à part.
+  while IFS= read -r -d '' fichier; do
+    echo "  $fichier (copie ou déplacement d'un fichier exclu)" >&2
+    touche=0
+  done < <(codex_derives_exclus "$base_ref")
   return "$touche"
 }
 

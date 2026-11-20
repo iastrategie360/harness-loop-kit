@@ -1,0 +1,22 @@
+# Profil d'agent Mistral Vibe de la TRANCHE FINALE et de l'appel réel du préflight : AUCUN outil,
+# la réponse se fait sur le prompt seul. Chargé par harness/scripts/mistral-commun.sh via
+# VIBE_AGENT_PATHS et `--agent sans-outils`, après contrôle (lib/profil-vibe.mjs) et recopie dans
+# le dossier de travail.
+#
+# Sans profil, vibe reprendrait ses réglages par défaut, et include_project_context vaut VRAI par
+# défaut : il chargerait d'office les AGENTS.md de l'utilisateur et du projet et l'état Git dans le
+# prompt système, même sans aucun outil. Ce profil coupe tout ce qui s'injecte de lui-même.
+#
+# AUCUN OUTIL : « re:^$ » ne désigne aucun nom d'outil. Une liste VIDE ne convient pas : vibe la
+# lit comme « pas de filtre », donc tous les outils (core/tools/manager.py).
+display_name = "Sans outil (lecture du prompt seulement)"
+description = "Tranche finale du harness : répond sur le prompt fourni, sans outil ni contexte ajouté"
+safety = "safe"
+
+enabled_tools = ["re:^$"]
+include_project_context = false
+include_prompt_detail = false
+system_prompt_id = "cli"
+include_commit_signature = false
+enable_update_checks = false
+enable_auto_update = false

@@ -20,7 +20,9 @@ const ICI = dirname(fileURLToPath(import.meta.url));
 export const DOSSIER_SCHEMAS = join(ICI, "..", "..", "schemas");
 // L'ORDRE compte : à un même point d'extension, une option qui produit des items (personas)
 // passe avant celle qui les filtre (valeur), et celle qui ferme le chantier (creneaux) en dernier.
-export const NOMS_OPTIONS = ["personas", "valeur", "note_story", "creneaux"];
+// `mistral` (1.1.0) n'a que des points à elle ; elle passe après le filtre de valeur, qui retire
+// des findings avant toute escalade.
+export const NOMS_OPTIONS = ["personas", "valeur", "mistral", "note_story", "creneaux"];
 
 export class ErreurConfig extends Error {}
 
@@ -72,6 +74,18 @@ export function lire(objet, chemin) {
 
 export function optionsActives(config) {
   return NOMS_OPTIONS.filter((nom) => config.options[nom]?.actif === true);
+}
+
+// L'option `mistral` est arrivée en 1.1.0 : une configuration posée en 1.0.0 n'a pas sa clé, et
+// reste valide (la clé n'est pas requise). Ces deux lectures rendent donc `false` sur une clé
+// absente : sans elle, le noyau se comporte exactement comme en 1.0.0.
+export function securiteExigee(config) {
+  const m = config.options?.mistral;
+  return m?.actif === true && m.securite_pr === true;
+}
+export function trancheActive(config) {
+  const m = config.options?.mistral;
+  return m?.actif === true && m.arbitre === true && m.tranche_finale === true;
 }
 
 // Date du jour et horodatage. HARNESS_DATE fige l'horloge pour les tests.

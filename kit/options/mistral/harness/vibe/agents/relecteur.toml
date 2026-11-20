@@ -1,0 +1,98 @@
+# Profil d'agent Mistral Vibe des relecteurs de l'option mistral (relecture sécurité, arbitre ;
+# la tranche finale tourne, elle, sans aucun outil). Chargé par harness/scripts/mistral-commun.sh
+# via VIBE_AGENT_PATHS et `--agent relecteur`, pour l'invocation seulement : la configuration de
+# l'utilisateur (~/.vibe) n'est jamais modifiée, et le modèle n'est pas choisi ici (il l'est par
+# VIBE_MODELS et VIBE_ACTIVE_MODEL, d'après options.mistral.modeles).
+#
+# LECTURE SEULE PAR CONSTRUCTION : seuls read_file et grep existent dans la session. Aucun outil
+# d'écriture, aucun shell, aucun réseau, aucun sous-agent. Le contrôle d'empreinte du dépôt avant
+# et après chaque appel reste appliqué en plus : c'est le second verrou, pas le premier.
+#
+# SECRETS : le relecteur envoie ce qu'il lit au fournisseur. Les fichiers de secrets sont donc
+# INTERDITS aux DEUX outils, avec la MÊME liste : l'outil contrôle le chemin DEMANDÉ, et les
+# exclusions du parcours de grep ne couvrent pas un fichier nommé explicitement. Une liste plus
+# courte côté grep laisserait lire une clé privée. Le préflight (lib/profil-vibe.mjs) refuse un
+# profil dont les deux listes diffèrent, ou qui ouvre autre chose que read_file et grep.
+display_name = "Relecteur du harness (lecture seule)"
+description = "Relecteur du harness : lit et cherche dans le dépôt, n'écrit rien"
+safety = "safe"
+
+enabled_tools = ["read_file", "grep"]
+# RIEN n'entre d'office dans le prompt système (lu dans vibe 2.13, core/system_prompt.py) :
+#  - include_project_context = false coupe le contexte du dépôt (arborescence, état Git) ET les
+#    instructions AGENTS.md, celles de l'utilisateur (~/.vibe/AGENTS.md) comme celles du projet ;
+#  - include_prompt_detail = false coupe la description du système, des outils, la liste des
+#    compétences (skills) et des sous-agents de l'utilisateur ;
+#  - system_prompt_id = "cli" écarte un prompt système personnel choisi dans ~/.vibe ;
+#  - include_commit_signature = false : rien à signer, le relecteur ne commite pas.
+# Le préflight (lib/profil-vibe.mjs) refuse un profil qui rouvrirait l'un d'eux.
+include_project_context = false
+include_prompt_detail = false
+system_prompt_id = "cli"
+include_commit_signature = false
+enable_update_checks = false
+enable_auto_update = false
+
+[tools.read_file]
+permission = "always"
+max_read_bytes = 32000
+denylist = [
+  "*/.env",
+  "*/.env.*",
+  "*/.envrc",
+  "*.pem",
+  "*.key",
+  "*.p12",
+  "*/id_rsa*",
+  "*/id_ed25519*",
+  "*/.git",
+  "*/.git/*",
+  "*/.vibe",
+  "*/.vibe/*",
+  "*/.codex",
+  "*/.codex/*",
+  "*/.claude/settings.json",
+  "*/.claude/settings.local.json",
+  "*/harness/.travail",
+  "*/harness/.travail/*",
+]
+sensitive_patterns = ["**/.env", "**/.env.*"]
+
+[tools.grep]
+permission = "always"
+# MÊME liste que read_file, à l'identique (voir l'en-tête).
+denylist = [
+  "*/.env",
+  "*/.env.*",
+  "*/.envrc",
+  "*.pem",
+  "*.key",
+  "*.p12",
+  "*/id_rsa*",
+  "*/id_ed25519*",
+  "*/.git",
+  "*/.git/*",
+  "*/.vibe",
+  "*/.vibe/*",
+  "*/.codex",
+  "*/.codex/*",
+  "*/.claude/settings.json",
+  "*/.claude/settings.local.json",
+  "*/harness/.travail",
+  "*/harness/.travail/*",
+]
+sensitive_patterns = ["**/.env", "**/.env.*"]
+# Exclusions du PARCOURS récursif de grep. Ici, seulement celles de PERFORMANCE (dépendances,
+# sorties de build). Les exclusions de SÉCURITÉ ne s'écrivent pas à la main : le profil effectif
+# (harness/.travail/mistral/vibe-agents/) les GÉNÈRE depuis la liste interdite (la denylist
+# ci-dessus et les chemins exclus du projet, lib/profil-vibe.mjs), si bien qu'un secret ajouté à la
+# denylist est aussi exclu du parcours, sans seconde copie à tenir. vibe ne charge jamais ce
+# profil-ci tel quel. Hors du dépôt, toute recherche est refusée : un chemin hors du dossier de
+# travail demande une approbation, que le mode programmatique refuse faute d'approbateur.
+exclude_patterns = [
+  "node_modules/",
+  "dist/",
+  "build/",
+  "target/",
+  ".venv/",
+]

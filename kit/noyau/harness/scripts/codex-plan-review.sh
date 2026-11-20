@@ -11,6 +11,7 @@
 #         défaut BLOQUANT (critique_bloquant) ; 5 le relecteur a écrit ; 64 usage.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/codex-common.sh"
+relecteur_sous_verrou "${BASH_SOURCE[0]}" "$@"
 
 PLAN="${1:-}"
 if [[ -z "$PLAN" ]]; then

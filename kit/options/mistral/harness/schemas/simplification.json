@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["diagnostic", "solution_simple", "fichiers_touches", "anti_over_engineering"],
+  "properties": {
+    "diagnostic": {
+      "type": "string",
+      "minLength": 1,
+      "description": "La cause réelle du désaccord qui persiste, en trois phrases au plus"
+    },
+    "solution_simple": {
+      "type": "string",
+      "minLength": 1,
+      "description": "La solution la PLUS simple qui clôt le désaccord, concrète et directement applicable par le codeur. Décision contraignante."
+    },
+    "fichiers_touches": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Chemins des fichiers à modifier pour appliquer la solution, relatifs à la racine du dépôt"
+    },
+    "anti_over_engineering": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Ce qu'il ne faut explicitement PAS faire : la complexité écartée"
+    }
+  }
+}

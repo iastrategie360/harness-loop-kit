@@ -35,7 +35,7 @@
         "severite": { "enum": ["P0", "P1", "P2"] },
         "fichier": { "type": ["string", "null"] },
         "survived": { "type": "integer", "minimum": 0 },
-        "escalation": { "enum": [null, "arbitre", "humain"] },
+        "escalation": { "enum": [null, "arbitre", "tranche", "humain"] },
         "statut": { "enum": ["ouvert", "corrige", "faux_positif", "tranche", "differe_valeur", "ecarte_valeur"] },
         "note": { "type": "string" },
         "valeur": {
@@ -133,7 +133,7 @@
         "properties": {
           "date": { "$ref": "#/$defs/date" },
           "cle": { "type": "string", "minLength": 1 },
-          "niveau": { "enum": ["arbitre", "humain"] },
+          "niveau": { "enum": ["arbitre", "tranche", "humain"] },
           "verdict": { "type": "string" },
           "note": { "type": "string" }
         }
