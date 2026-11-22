@@ -265,6 +265,8 @@ async function code(racine, config, id, cheminFindings, cheminCorps) {
   const nouveauxRattachements = decision.rattachements.map((r) => ({
     date, round, cle_source: r.source.cle, cle_cible: r.cible.cle, titre: r.source.titre, severite: r.source.severite,
     fichier: r.source.fichier, score: arrondi(r.score), ab: r.ab, ba: r.ba, modele: r.modele,
+    // Pour défaire : le corps que le connu avait, et celui qui l'a remplacé.
+    corps: corps[r.cible.cle] ?? "", corps_avant: String(corpsConnus[r.cible.cle] ?? ""),
   }));
   const nouveauxSignalements = decision.signalements.map((s) => ({
     date, round, type: s.type, cle: s.source.cle, candidat: s.candidat.cle, score: arrondi(s.score), modele: s.modele, motif: s.motif,

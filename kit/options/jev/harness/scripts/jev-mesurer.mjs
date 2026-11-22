@@ -20,11 +20,17 @@
 //       reconnus et les nouveaux défauts tus, avec et sans les artefacts de review.
 //
 // Codes : 0 fait ; 1 refus ou échec ; 64 usage.
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync, existsSync, readdirSync, statSync, mkdirSync } from "node:fs";
+import { join, relative, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { chargerConfig, trouverRacine, ecrireJson, ErreurConfig } from "./lib/config.mjs";
+import { chargerConfig, trouverRacine, ecrireJson as ecrireJsonBrut, ErreurConfig } from "./lib/config.mjs";
+
+// Le dossier de sortie se crée s'il manque : la première mesure vient souvent avant tout round.
+function ecrireJson(chemin, objet) {
+  mkdirSync(dirname(chemin), { recursive: true });
+  ecrireJsonBrut(chemin, objet);
+}
 import { JevIndisponible, preparer, scorer, fichiersExclus, refusEnvoi, QUESTION } from "./lib/jev.mjs";
 
 const SEUILS_DEFAUT = [0.5, 0.6, 0.7, 0.8, 0.9];

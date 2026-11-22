@@ -544,7 +544,13 @@ export function fusionner(ancien, nouveaux, contexte) {
     if (nf.rattachement) {
       maj.rattachements = [
         ...(existant.rattachements ?? []),
-        { ...nf.rattachement, survived_ajoute: (maj.survived ?? 0) - (existant.survived ?? 0) },
+        {
+          ...nf.rattachement,
+          survived_ajoute: (maj.survived ?? 0) - (existant.survived ?? 0),
+          // Ce que la fusion remplace sur le connu, pour que défaire le lui rende.
+          corps_avant: existant.corps ?? "",
+          lines_avant: existant.lines ?? null,
+        },
       ];
     }
     if (nf.signalements?.length) maj.signalements = [...(existant.signalements ?? []), ...nf.signalements];

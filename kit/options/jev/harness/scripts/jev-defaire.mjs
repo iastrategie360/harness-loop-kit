@@ -66,6 +66,12 @@ function defaireCode(racine, id, cible, source, note) {
   const continu = (x) => Array.from({ length: ledger.rounds - x.round }, (_, k) => x.round + 1 + k).every((n) => vus.has(n));
   const encoreLa = actifs.filter(([x]) => x.remis_a_zero === undefined && continu(x));
   const survived = Math.max(0, connu.survived - encoreLa.length);
+  // Les corps gardés pour la comparaison : la source garde le dernier, le connu retrouve le sien.
+  const corpsRendus = {};
+  if (Object.hasOwn(actifs[0][0], "corps_avant") && (jev.corps ?? {})[cible] === r.corps) {
+    corpsRendus[source] = r.corps;
+    corpsRendus[cible] = actifs[0][0].corps_avant;
+  }
   const patch = {
     review_ledger: {
       code: {
@@ -75,7 +81,7 @@ function defaireCode(racine, id, cible, source, note) {
         },
       },
     },
-    extensions: { jev: { rattachements } },
+    extensions: { jev: { rattachements, corps: corpsRendus } },
   };
   const fichier = join(racine, "harness", ".travail", "jev", `defaire-${id}.json`);
   mkdirSync(dirname(fichier), { recursive: true });
@@ -122,8 +128,13 @@ function defairePr(racine, config, cibleArg, cible, source, note) {
     escalation: null,
     reouvertures: [],
   };
+  // Le connu retrouve la description qu'il avait AVANT le premier rattachement défait, si
+  // personne ne l'a rafraîchie depuis (une review qui l'a re-signalé sous sa propre clé).
+  const premier = actifs[0][0];
+  const restaurer = Object.hasOwn(premier, "corps_avant") && connu.corps === r.corps;
   artefact.findings[cible] = {
     ...connu,
+    ...(restaurer ? { corps: premier.corps_avant, lines: premier.lines_avant ?? connu.lines } : {}),
     survived: Math.max(0, (connu.survived ?? 0) - ajoute),
     rattachements: liste.map((x, k) => (indices.has(k) ? { ...x, defait: { date, note } } : x)),
   };

@@ -371,7 +371,7 @@ describe("stage CODE : le registre de ledger-round", () => {
     assert.equal(Object.hasOwn(e.review_ledger.code.findings, cle(A3)), false);
     if (seuil <= 2) assert.deepEqual(r3.bilan.a_escalader, [{ cle: cle(A), vers: "arbitre" }], "le défaut tenace monte à l'arbitre");
     assert.equal(e.extensions.jev.rattachements.length, 2);
-    assert.deepEqual(Object.keys(e.extensions.jev.rattachements[0]).sort(), ["ab", "ba", "cle_cible", "cle_source", "date", "fichier", "modele", "round", "score", "severite", "titre"]);
+    assert.deepEqual(Object.keys(e.extensions.jev.rattachements[0]).sort(), ["ab", "ba", "cle_cible", "cle_source", "corps", "corps_avant", "date", "fichier", "modele", "round", "score", "severite", "titre"]);
     assert.ok(e.historique.some((h) => /jev : « Une valeur vide passe encore la garde » .* rattaché à `src-garde-py--la-garde-accepte-une-chaine-vide` \(score 0\.9, modèle jev-1\.14\.0\)/.test(h.note)));
     sansCle(d, r2.jev.sortie, r2.jev.erreur, r3.jev.sortie, r3.jev.erreur);
   });
@@ -685,6 +685,8 @@ describe("défaire un rattachement : rouvrir comme neuf", () => {
     assert.equal(a.findings[cle(A)].survived, 0);
     assert.equal(a.findings[cle(A)].rattachements.every((x) => x.defait?.note === "Laurent : deux défauts distincts"), true, "tous les rattachements de la source sont défaits");
     assert.equal(a.findings[cle(A2)].corps, "Corps le plus récent.", "la plus récente donne ce qui est rouvert");
+    assert.equal(a.findings[cle(A)].corps, `Corps : ${A}.`, "le connu retrouve sa propre description");
+    assert.deepEqual(a.findings[cle(A)].lines, [2, 2]);
     assert.equal(a.findings[cle(A2)].severity, "P2");
     assert.equal(a.synthese.open_p0_p2, 2);
     assert.match(d.lire("specs", "001-jouet", "review-pr.md"), /défait le/);
@@ -709,6 +711,8 @@ describe("défaire un rattachement : rouvrir comme neuf", () => {
     assert.equal(e.extensions.jev.rattachements.length, 2);
     assert.equal(e.extensions.jev.rattachements.every((x) => x.defait?.note === "deux défauts distincts"), true);
     assert.ok(e.historique.some((h) => /rattachement défait/.test(h.note)));
+    assert.equal(e.extensions.jev.corps[cle(A)], `Corps : ${A}.`, "le connu retrouve son corps pour les comparaisons suivantes");
+    assert.equal(e.extensions.jev.corps[cle(A2)], `Corps : ${A2}.`);
   });
 
   test("stage CODE : défaire après une remise à zéro ne retire pas la persistance gagnée depuis", async (t) => {
@@ -758,7 +762,7 @@ describe("jev-mesurer : re-mesurer les seuils", () => {
     await okFusion(d, env, [finding(A), finding("Même commit", { p: 2 }), finding("Exclu un", { fichier: "prive/x.py" })], 1);
     await okFusion(d, env, [finding(A2), finding(B, { p: 2 }), finding("Exclu deux", { fichier: "prive/x.py" }), finding("Bruit d'artefact", { fichier: "specs/001-jouet/review-pr.json" })], 2);
     await okFusion(d, env, [finding("Bruit d'artefact bis", { fichier: "specs/001-jouet/review-pr.json" })], 3);
-    const paires = d.chemin("harness", ".travail", "paires.json");
+    const paires = d.chemin("harness", ".travail", "mesure-neuve", "paires.json");
     const p = d.lancer("jev-mesurer.mjs", ["paires", "--sortie", paires]);
     assert.equal(p.code, 0, p.erreur);
     assert.match(p.sortie, /2 finding\(s\) écarté\(s\)/);
