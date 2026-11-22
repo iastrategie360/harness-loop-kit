@@ -728,6 +728,23 @@ describe("défaire un rattachement : rouvrir comme neuf", () => {
     assert.equal(r.code, 0, r.erreur);
     assert.equal(etatDe(d).review_ledger.code.findings[cle(A)].survived, 2, "la persistance d'après la remise à zéro reste");
   });
+
+  test("stage CODE : un round joué sans l'option rend la persistance incertaine, défaire n'en retire rien", async (t) => {
+    const s = await fauxJev(parTitres({ [`${A}|${A2}`]: 0.9 }));
+    const d = chantier();
+    t.after(async () => { await s.fermer(); d.detruire(); });
+    storyEnCode(d);
+    const env = envJev(d, s);
+    await roundCode(d, env, 1, [{ titre: A }]);
+    await roundCode(d, env, 2, [{ titre: A2 }]);
+    // Round 3 sans l'option : A absent, ledger-round le remet à zéro, aucune marque n'est posée.
+    const vide = d.ecrire("harness/.travail/relecteur/sans-option.json", "[]");
+    assert.equal(d.lancer("etat.mjs", ["ledger-round", "001-jouet", "--findings", vide]).code, 0);
+    await roundCode(d, env, 4, [{ titre: A }]);
+    assert.equal(etatDe(d).review_ledger.code.findings[cle(A)].survived, 1);
+    assert.equal(d.lancer("jev-defaire.mjs", ["code", "001-jouet", cle(A), cle(A2), "--note", "distincts"]).code, 0);
+    assert.equal(etatDe(d).review_ledger.code.findings[cle(A)].survived, 1, "rien n'est retiré : l'escalade n'est pas retardée");
+  });
 });
 
 // --- Re-mesure ------------------------------------------------------------------------------
@@ -759,6 +776,7 @@ describe("jev-mesurer : re-mesurer les seuils", () => {
     assert.equal(s.recus.length, liste.length * 2, "chaque paire, dans les deux ordres");
     const notes = lireJson(scores);
     const idAA2 = liste.find((x) => x.a.titre === A && x.b.titre === A2).id;
+    const idBruitAvant = liste.find((x) => x.artefact_de_review).id;
     assert.equal(notes[idAA2].score, 0.85, "le minimum des deux ordres");
     const encore = await lancer(d, "jev-mesurer.mjs", ["interroger", "--paires", paires, "--scores", scores], env);
     assert.equal(encore.code, 0);
@@ -777,6 +795,14 @@ describe("jev-mesurer : re-mesurer les seuils", () => {
     assert.equal(exclu.code, 0, exclu.erreur);
     assert.equal(s.recus.length, liste.length * 4 + 2, "seule la paire hors de src/ est posée");
     assert.match(exclu.sortie, /4 refusée\(s\) à l'envoi/);
+    // Le fichier de scores ne garde que le jeu courant : rejoué sur les scores complets, il perd
+    // les paires désormais exclues.
+    const complet = lireJson(scores);
+    const reduit = d.chemin("harness", ".travail", "scores-reduits.json");
+    d.ecrire("harness/.travail/scores-reduits.json", JSON.stringify(complet));
+    const r4 = await lancer(d, "jev-mesurer.mjs", ["interroger", "--paires", paires, "--scores", reduit, "--modele", "jev-1.15.0"], env);
+    assert.equal(r4.code, 0, r4.erreur);
+    assert.deepEqual(Object.keys(lireJson(reduit)), [idBruitAvant], "seule la paire encore envoyable reste");
     d.reconfigurer((c) => { c.relecteur.chemins_exclus = ["prive/"]; });
 
     // Une panne en cours de route : ce qui a été payé est écrit, la panne remonte (code 1).

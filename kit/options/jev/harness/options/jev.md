@@ -189,7 +189,9 @@ pose toi-même `corrige` après vérification). Le rattachement n'est pas effac�
 défait, avec la note. Une même reformulation rattachée à plusieurs rounds se défait d'un seul
 geste : toutes ses traces, et la plus récente donne ce qui est rouvert. Au stage CODE, un connu
 remis à zéro depuis (absent d'un round, donc tenu pour corrigé) ne perd pas la persistance gagnée
-après : la trace porte alors `remis_a_zero`.
+après : la trace porte alors `remis_a_zero`. Si un round a été joué sans l'option depuis le
+rattachement, la persistance est incertaine, et défaire n'en retire rien (l'escalade n'est
+jamais retardée).
 
 ```bash
 node harness/scripts/jev-defaire.mjs pr <id> <clé du connu> <clé source> --note "<qui, pourquoi>"

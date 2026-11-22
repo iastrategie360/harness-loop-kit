@@ -59,7 +59,13 @@ function defaireCode(racine, id, cible, source, note) {
   const rattachements = liste.map((x, k) => (indices.has(k) ? { ...x, defait: { date, note } } : x));
   // Seuls comptent les rattachements dont la persistance est encore là : un connu remis à zéro
   // depuis (marque `remis_a_zero`, posée par jev-rattacher) ne leur doit plus rien.
-  const survived = Math.max(0, connu.survived - actifs.filter(([x]) => x.remis_a_zero === undefined).length);
+  // Et seulement si l'option a vu chaque round depuis : un round joué sans elle a pu remettre le
+  // connu à zéro sans laisser de marque. Dans le doute, rien n'est retiré (sens sûr : l'escalade
+  // n'est jamais retardée).
+  const vus = new Set(jev.rounds_vus ?? []);
+  const continu = (x) => Array.from({ length: ledger.rounds - x.round }, (_, k) => x.round + 1 + k).every((n) => vus.has(n));
+  const encoreLa = actifs.filter(([x]) => x.remis_a_zero === undefined && continu(x));
+  const survived = Math.max(0, connu.survived - encoreLa.length);
   const patch = {
     review_ledger: {
       code: {

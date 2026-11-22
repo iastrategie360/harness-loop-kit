@@ -174,6 +174,12 @@ function marquerRemises(rattachements, clesFinales, ledger, round) {
       : r));
 }
 
+// Les rounds que l'option a vus passer. Un round sans elle (option coupée) a pu remettre un connu à
+// zéro sans que la trace le dise : défaire ne retire alors rien (jev-defaire.mjs).
+function vus(ext, round) {
+  return [...new Set([...(ext.rounds_vus ?? []), round])].sort((a, b) => a - b);
+}
+
 function ecrireExtension(racine, id, jev) {
   const patch = join(racine, "harness", ".travail", "jev", `patch-${id}.json`);
   mkdirSync(dirname(patch), { recursive: true });
@@ -229,9 +235,11 @@ async function code(racine, config, id, cheminFindings, cheminCorps) {
     dire(err.message);
     historique(id, `option jev indisponible : ${err.message} (round ${round} : aucun rattachement)`);
     journaliser(racine, [{ date, registre: "code", cible: id, action: "indisponible", round, motif: err.message }]);
-    const avant = ext.rattachements ?? [];
-    const apres = marquerRemises(avant, clesPresentes, ledger, round);
-    if (JSON.stringify(apres) !== JSON.stringify(avant)) ecrireExtension(racine, id, { ...ext, rattachements: apres });
+    ecrireExtension(racine, id, {
+      ...ext,
+      rattachements: marquerRemises(ext.rattachements ?? [], clesPresentes, ledger, round),
+      rounds_vus: vus(ext, round),
+    });
     return 0;
   }
 
@@ -262,6 +270,7 @@ async function code(racine, config, id, cheminFindings, cheminCorps) {
     date, round, type: s.type, cle: s.source.cle, candidat: s.candidat.cle, score: arrondi(s.score), modele: s.modele, motif: s.motif,
   }));
   const jev = {
+    rounds_vus: vus(ext, round),
     corps,
     rattachements: [
       ...marquerRemises(ext.rattachements ?? [], new Set(presents.map((f) => parSource.get(f.cle)?.cible.cle ?? f.cle)), ledger, round),
@@ -269,9 +278,7 @@ async function code(racine, config, id, cheminFindings, cheminCorps) {
     ],
     signalements: [...(ext.signalements ?? []), ...nouveauxSignalements],
   };
-  if (JSON.stringify(jev) !== JSON.stringify({ corps: ext.corps ?? {}, rattachements: ext.rattachements ?? [], signalements: ext.signalements ?? [] })) {
-    ecrireExtension(racine, id, jev);
-  }
+  ecrireExtension(racine, id, jev);
   const entrees = [];
   for (const r of nouveauxRattachements) {
     const ligne = `jev : « ${r.titre} » (\`${r.cle_source}\`) rattaché à \`${r.cle_cible}\` (score ${r.score}, modèle ${r.modele})`;

@@ -141,7 +141,10 @@ async function interroger(racine, config, cheminPaires, cheminScores, modele) {
   ecrireJson(cheminScores, deja);
   const echec = issues.find((x) => x.status === "rejected");
   if (echec) throw echec.reason;
-  for (const p of paires.filter((x) => !envoyables.includes(x))) delete deja[p.id];
+  // Le fichier de scores ne garde que le jeu courant : une paire disparue (exclue depuis, artefact
+  // retiré) ou refusée à l'envoi ne compte plus dans le tableau.
+  const courants = new Set(envoyables.map((p) => p.id));
+  for (const id of Object.keys(deja)) if (!courants.has(id)) delete deja[id];
   ecrireJson(cheminScores, deja);
   console.log(`paires notées : ${Object.keys(deja).length} (dont ${fait} à ce passage), ${refusees} refusée(s) à l'envoi (chemin exclu ou motif de secret) -> ${cheminScores}`);
   return 0;
