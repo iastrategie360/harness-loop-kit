@@ -124,7 +124,12 @@ async function interroger(racine, config, cheminPaires, cheminScores, modele) {
   const empreinte = (p) => createHash("sha256")
     .update(JSON.stringify([reglages.modele, QUESTION, p.a.titre, p.a.corps, p.b.titre, p.b.corps]))
     .digest("hex");
-  const file = envoyables.filter((p) => deja[p.id]?.empreinte !== empreinte(p));
+  // Avant le premier envoi, le fichier ne garde que les scores valides pour CETTE mesure : un
+  // résultat partiel (panne en route) ne mêle jamais deux contextes.
+  const courants = new Set(envoyables.map((p) => p.id));
+  for (const p of envoyables) if (deja[p.id] && deja[p.id].empreinte !== empreinte(p)) delete deja[p.id];
+  for (const id of Object.keys(deja)) if (!courants.has(id)) delete deja[id];
+  const file = envoyables.filter((p) => !deja[p.id]);
   let fait = 0;
   let arret = false;
   async function ouvrier() {
@@ -147,10 +152,6 @@ async function interroger(racine, config, cheminPaires, cheminScores, modele) {
   ecrireJson(cheminScores, deja);
   const echec = issues.find((x) => x.status === "rejected");
   if (echec) throw echec.reason;
-  // Le fichier de scores ne garde que le jeu courant : une paire disparue (exclue depuis, artefact
-  // retiré) ou refusée à l'envoi ne compte plus dans le tableau.
-  const courants = new Set(envoyables.map((p) => p.id));
-  for (const id of Object.keys(deja)) if (!courants.has(id)) delete deja[id];
   ecrireJson(cheminScores, deja);
   console.log(`paires notées : ${Object.keys(deja).length} (dont ${fait} à ce passage), ${refusees} refusée(s) à l'envoi (chemin exclu ou motif de secret) -> ${cheminScores}`);
   return 0;

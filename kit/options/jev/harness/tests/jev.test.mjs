@@ -825,6 +825,13 @@ describe("jev-mesurer : re-mesurer les seuils", () => {
     const enVol = Math.floor((s2.recus.length - 1) / 2);
     assert.ok(enVol >= 1, "des paires étaient en vol au moment de la panne");
     assert.equal(Object.keys(lireJson(partiel)).length, enVol, "chaque paire en vol, menée au bout, est écrite");
+    // Même panne sur un fichier de scores d'un autre modèle : il ne garde aucun score périmé.
+    const mele = d.chemin("harness", ".travail", "scores-meles.json");
+    d.ecrire("harness/.travail/scores-meles.json", JSON.stringify(lireJson(scores)));
+    n = 0;
+    const p4 = await lancer(d, "jev-mesurer.mjs", ["interroger", "--paires", paires, "--scores", mele, "--modele", "jev-1.16.0"], envJev(d, s2));
+    assert.equal(p4.code, 1);
+    assert.equal(Object.values(lireJson(mele)).every((x) => x.modele_demande === "jev-1.16.0"), true, "aucun score d'un autre contexte");
 
     const idAB = liste.find((x) => x.a.titre === A && x.b.titre === B).id;
     const idBruit = liste.find((x) => x.artefact_de_review).id;
