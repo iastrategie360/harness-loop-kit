@@ -884,8 +884,7 @@ describe("chemins : un seul point de canonicalisation, fermé par défaut", () =
   const formes = [
     ["« ./ »", "./prive/a.py", "./prive/a.py"],
     ["« ./ » et « // »", "./prive/a.py", "prive//a.py"],
-    ["« .. »", "src/../prive/a.py", "src/../prive/a.py"],
-    ["« .. » et « ./ »", "src/../prive/a.py", "./src/../prive/./a.py"],
+    ["« // »", "prive//a.py", "prive//a.py"],
   ];
   for (const [nom, connu, neuf] of formes) {
     test(`un chemin exclu écrit avec ${nom} ne part pas`, async (t) => {
@@ -899,6 +898,39 @@ describe("chemins : un seul point de canonicalisation, fermé par défaut", () =
       assert.equal(Object.hasOwn(artefact(d).findings, cle(A2, neuf)), true, "il reste neuf");
     });
   }
+
+  test("un segment « .. » est refusé partout, même vers un fichier permis, et le journal le nomme", async (t) => {
+    const s = await fauxJev(parTitres({}, 0.99));
+    const d = chantier({ config: (c) => { c.relecteur.chemins_exclus = ["prive/"]; } });
+    t.after(async () => { await s.fermer(); d.detruire(); });
+    const { symlinkSync, mkdirSync } = await import("node:fs");
+    // alias -> prive/sous : « alias/../secret.py » désigne prive/secret.py, que la résolution
+    // lexicale prendrait pour secret.py à la racine.
+    mkdirSync(d.chemin("prive", "sous"), { recursive: true });
+    d.ecrire("prive/secret.py", "S = 1\n");
+    symlinkSync("prive/sous", d.chemin("alias"));
+    const env = envJev(d, s);
+    const cas = [["secret.py", "alias/../secret.py"], ["src/a.py", "src/../src/a.py"], ["src/b.py", "./src/./../src/b.py"], ["@/src/c.py", "@/src/../src/c.py"]];
+    let n = 0;
+    for (const [connu, neuf] of cas) {
+      const e = chantier({ config: (c) => { c.relecteur.chemins_exclus = ["prive/"]; } });
+      t.after(e.detruire);
+      mkdirSync(e.chemin("prive", "sous"), { recursive: true });
+      symlinkSync("prive/sous", e.chemin("alias"));
+      storyEnCode(e);
+      const envE = envJev(e, s);
+      n += 1;
+      await roundCode(e, envE, 1, [{ titre: A, fichier: connu.replace("@", e.racine) }]);
+      await roundCode(e, envE, 2, [{ titre: A2, fichier: neuf.replace("@", e.racine) }]);
+      assert.equal(s.recus.length, 0, `${neuf} ne part pas`);
+      assert.match(e.lire("harness", ".travail", "jev", "journal.jsonl"), /"action":"non_envoye".*segment « \.\. » dans le chemin/);
+    }
+    assert.equal(n, cas.length);
+    await okFusion(d, env, [finding(A, { fichier: "secret.py" })], 1);
+    await okFusion(d, env, [finding(A2, { fichier: "alias/../secret.py" })], 2);
+    assert.equal(s.recus.length, 0, "au stage PR non plus");
+    assert.match(d.lire("harness", ".travail", "jev", "journal.jsonl"), /"registre":"pr".*"action":"non_envoye","fichier":"alias\/\.\.\/secret\.py","motif":"segment « \.\. »/);
+  });
 
   test("un chemin absolu dans le dépôt se ramène au relatif : exclu, il ne part pas ; permis, il se compare", async (t) => {
     const s = await fauxJev(parTitres({ [`${A}|${A2}`]: 0.9 }, 0.99));
@@ -969,7 +1001,7 @@ describe("chemins : un seul point de canonicalisation, fermé par défaut", () =
     t.after(async () => { await s.fermer(); d.detruire(); });
     const env = envJev(d, s);
     await okFusion(d, env, [finding(A, { fichier: "./src/a.py" }), finding(B, { fichier: "./prive/x.py" })], 1);
-    await okFusion(d, env, [finding(A2, { fichier: "src/a.py" }), finding(A3, { fichier: "src/../prive/x.py" })], 2);
+    await okFusion(d, env, [finding(A2, { fichier: "src/a.py" }), finding(A3, { fichier: "prive//x.py" })], 2);
     const paires = d.chemin("harness", ".travail", "p.json");
     assert.equal(d.lancer("jev-mesurer.mjs", ["paires", "--sortie", paires]).code, 0);
     const liste = lireJson(paires);

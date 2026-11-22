@@ -55,9 +55,11 @@ Les cas limites :
 - comparer deux findings de fichiers différents, ou un finding sans fichier ;
 - envoyer un finding dont le chemin sort du dépôt, est vide ou ne se canonise pas. Chaque chemin
   passe par UN point de canonicalisation (`canoniser` de `lib/jev.mjs`, même règle que l'option
-  `mistral`) : relatif à la racine, « ./ », « .. » et barres doublées résolus, chemin absolu dans
-  le dépôt ramené au relatif, liens symboliques suivis (un lien pendant aussi, par sa cible
-  écrite). C'est aussi sur cette forme que se jugent « même fichier » et les paires de la
+  `mistral`) : relatif à la racine, « ./ » et barres doublées résolus, chemin absolu dans le dépôt
+  ramené au relatif, liens symboliques suivis (un lien pendant aussi, par sa cible écrite). Un
+  chemin qui porte un segment « .. », où qu'il soit, est refusé sans être résolu : derrière un
+  lien, `alias/../x` ne désigne pas ce qu'une résolution lexicale en ferait. Le journal nomme le
+  motif (`non_envoye`). C'est aussi sur cette forme que se jugent « même fichier » et les paires de la
   re-mesure ;
 - envoyer un finding dont le fichier, ou la cible de son lien, est couvert par `relecteur.chemins_exclus` (même
   fonction que celle qui garde le relecteur, `chemin_exclu` de `codex-common.sh`, donc même

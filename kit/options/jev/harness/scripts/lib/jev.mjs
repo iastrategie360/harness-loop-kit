@@ -211,15 +211,24 @@ export async function scorer(demander, a, b) {
 
 // canoniser(racine, brut) : LE point de canonicalisation des chemins de l'option, même règle que
 // `mistral_canoniser` de l'option mistral (realpath -m -s, puis realpath -m) :
-//   - `lex`, la forme lexicale relative à la racine : « ./ », « .. », barres doublées résolus, un
+//   - `lex`, la forme lexicale relative à la racine : « ./ » et barres doublées résolus, un
 //     chemin absolu dans le dépôt ramené au relatif, les liens laissés tels quels (le nom que Git
 //     connaît) ;
 //   - `res`, la forme résolue : liens symboliques suivis sur la partie qui existe (le fichier
 //     qu'on lirait).
 // Rend null (FAIL-CLOSED : l'appelant n'envoie rien) si l'une des deux sort du dépôt, si le chemin
-// est vide ou désigne la racine elle-même, ou s'il ne se canonise pas.
+// est vide ou désigne la racine elle-même, porte un segment « .. », ou ne se canonise pas.
+// Un segment « .. » est REFUSÉ, où qu'il soit (absolu compris) : derrière un lien, « alias/../x »
+// ne désigne pas ce que la résolution lexicale en ferait, et un relecteur n'en écrit pas dans un
+// chemin de finding. Rendre la forme inexprimable vaut mieux que courir après ses combinaisons.
+export const SEGMENT_PARENT = "segment « .. » dans le chemin : refusé sans le résoudre";
+export function aUnSegmentParent(brut) {
+  return String(brut ?? "").split(/[/\\]+/).includes("..");
+}
+
 export function canoniser(racine, brut) {
   if (typeof brut !== "string" || brut.trim() === "" || brut.includes("\0")) return null;
+  if (aUnSegmentParent(brut)) return null;
   try {
     const racineLex = resolve(racine);
     const racineRes = realpathSync(racineLex);
@@ -275,7 +284,8 @@ export function controlerChemins(racine, fichiers, env = process.env) {
   const formes = new Set();
   for (const b of bruts) {
     const c = canoniser(racine, b);
-    resultat.set(b, c ? { canon: c.lex, res: c.res, refus: null } : { canon: null, refus: "chemin hors du dépôt, vide, ou impossible à canoniser" });
+    const refus = aUnSegmentParent(b) ? SEGMENT_PARENT : "chemin hors du dépôt, vide, ou impossible à canoniser";
+    resultat.set(b, c ? { canon: c.lex, res: c.res, refus: null } : { canon: null, refus });
     if (c) {
       formes.add(c.lex);
       formes.add(c.res);

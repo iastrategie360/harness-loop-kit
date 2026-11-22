@@ -28,7 +28,7 @@ import { chargerConfig, trouverRacine, ecrireJson, maintenant, ErreurConfig } fr
 import { cleFinding, statutTraite } from "./lib/review-pr-artefact.mjs";
 import { STATUTS_TRANCHES } from "./etat.mjs";
 import {
-  JevIndisponible, comparer, preparer, reglagesJev, controlerChemins, canoniser, refusEnvoi, plusGrave, estComparable,
+  JevIndisponible, comparer, preparer, reglagesJev, controlerChemins, canoniser, aUnSegmentParent, SEGMENT_PARENT, refusEnvoi, plusGrave, estComparable,
   scorer, TAILLE_MAX_CORPS,
 } from "./lib/jev.mjs";
 
@@ -47,6 +47,11 @@ function journaliser(racine, entrees) {
 }
 
 const arrondi = (x) => Math.round(x * 1000) / 1000;
+
+// Les chemins qui ne partent pas, avec leur motif, pour le journal (le superviseur y lit pourquoi).
+function cheminsRefuses(chemins, base) {
+  return [...chemins.entries()].filter(([, v]) => v.refus).map(([fichier, v]) => ({ ...base, action: "non_envoye", fichier, motif: v.refus }));
+}
 
 function dire(message) {
   console.error(`option jev indisponible : ${message}. Aucun rattachement : le registre suit la règle de 1.1.0.`);
@@ -88,13 +93,18 @@ export async function rattacherPr({ racine, config, ancien, nouveaux, headSha, d
       // `corrige`, une absence de statut, ou une coquille : non tranché, donc rattachable.
       tranche: statutTraite(f.statut) && f.statut !== "corrige",
     }));
-  if (!pairesPossibles(racine, neufs, connus)) return nouveaux;
-
   const cible = isAbsolute(artefact) ? relative(racine, artefact) : artefact;
+  if (!pairesPossibles(racine, neufs, connus)) {
+    // Rien à poser, mais un chemin refusé d'office se dit quand même au journal.
+    journaliser(racine, neufs.filter((n) => aUnSegmentParent(n.fichier)).map((n) => ({ date, registre: "pr", cible, action: "non_envoye", fichier: n.fichier, motif: SEGMENT_PARENT })));
+    return nouveaux;
+  }
+
   let decision;
   try {
     const { reglages, demander } = preparer(config, racine, env);
     const chemins = controlerChemins(racine, [...neufs, ...connus].map((f) => f.fichier), env);
+    journaliser(racine, cheminsRefuses(chemins, { date, registre: "pr", cible }));
     decision = { reglages, ...(await comparer({ neufs, connus, reglages, demander, chemins })) };
   } catch (e) {
     if (!(e instanceof JevIndisponible)) throw e;
@@ -229,6 +239,7 @@ async function code(racine, config, id, cheminFindings, cheminCorps) {
   let decision = { rattachements: [], signalements: [], paires: 0 };
   try {
     chemins = controlerChemins(racine, [...presents.map((f) => f.fichier), ...connus.map((f) => f.fichier)]);
+    journaliser(racine, cheminsRefuses(chemins, { date, registre: "code", cible: id, round }));
     if (pairesPossibles(racine, neufs, connus)) {
       const { reglages, demander } = preparer(config, racine);
       decision = await comparer({ neufs, connus, reglages, demander, chemins });
@@ -324,6 +335,7 @@ function journal(racine, id) {
     const ou = `${e.date} ${e.registre} ${e.cible}`;
     if (e.action === "rattachement") console.log(`${ou} RATTACHÉ ${e.cle_source} -> ${e.cle_cible} (score ${e.score}, modèle ${e.modele})`);
     else if (e.action === "signalement") console.log(`${ou} SIGNALÉ ${e.cle_source ?? e.cle} (${e.type}) : ${e.motif}`);
+    else if (e.action === "non_envoye") console.log(`${ou} NON ENVOYÉ ${e.fichier} : ${e.motif}`);
     else console.log(`${ou} ${String(e.action).toUpperCase()} : ${e.motif ?? ""}`);
   }
   if (n === 0) console.log("aucune entrée pour cette cible");
