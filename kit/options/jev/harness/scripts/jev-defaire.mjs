@@ -45,21 +45,25 @@ function defaireCode(racine, id, cible, source, note) {
   const ledger = e.review_ledger.code;
   const jev = e.extensions?.jev ?? {};
   const liste = jev.rattachements ?? [];
-  const i = liste.findIndex((r) => r.cle_cible === cible && r.cle_source === source && !r.defait);
-  if (i < 0) refuser(`aucun rattachement actif de « ${source} » vers « ${cible} » dans extensions.jev.rattachements`);
-  const r = liste[i];
+  // Une même reformulation peut avoir été rattachée à plusieurs rounds : on les défait TOUS, et la
+  // plus récente donne ce qui est rouvert (titre, sévérité).
+  const actifs = liste.map((x, k) => [x, k]).filter(([x]) => x.cle_cible === cible && x.cle_source === source && !x.defait);
+  if (actifs.length === 0) refuser(`aucun rattachement actif de « ${source} » vers « ${cible} » dans extensions.jev.rattachements`);
+  const r = actifs.at(-1)[0];
+  const indices = new Set(actifs.map(([, k]) => k));
   if (ledger.rounds < r.round) refuser(`le round ${r.round} qui a rattaché n'est pas encore passé par ledger-round : rien à défaire dans le registre`);
   if (Object.hasOwn(ledger.findings, source)) refuser(`« ${source} » est déjà dans le registre : il n'y a rien à rouvrir`);
   const connu = ledger.findings[cible];
   if (!connu) refuser(`« ${cible} » n'est pas dans le registre`);
   const date = maintenant();
-  const rattachements = liste.map((x, k) => (k === i ? { ...x, defait: { date, note } } : x));
+  const rattachements = liste.map((x, k) => (indices.has(k) ? { ...x, defait: { date, note } } : x));
+  const survived = Math.max(0, connu.survived - actifs.length);
   const patch = {
     review_ledger: {
       code: {
         findings: {
           [source]: { titre: r.titre, severite: r.severite, fichier: r.fichier, survived: 0, escalation: null, statut: "ouvert" },
-          [cible]: { survived: Math.max(0, connu.survived - 1) },
+          [cible]: { survived },
         },
       },
     },
@@ -70,7 +74,7 @@ function defaireCode(racine, id, cible, source, note) {
   writeFileSync(fichier, JSON.stringify(patch));
   etat(["ecrire", id, "--patch-fichier", fichier]);
   etat(["historique", id, `jev : rattachement défait, ${source} rouvert comme neuf (était rattaché à ${cible}) : ${note}`]);
-  console.log(`rattachement défait : ${source} rouvert comme neuf, ${cible} garde son statut (persistance ${Math.max(0, connu.survived - 1)})`);
+  console.log(`${actifs.length} rattachement(s) défait(s) : ${source} rouvert comme neuf, ${cible} garde son statut (persistance ${survived})`);
   return 0;
 }
 
@@ -87,10 +91,12 @@ function defairePr(racine, config, cibleArg, cible, source, note) {
   const connu = artefact.findings?.[cible];
   if (!connu) refuser(`clé inconnue dans ${relatif} : « ${cible} »`);
   const liste = connu.rattachements ?? [];
-  const i = liste.findIndex((r) => r.cle_source === source && !r.defait);
-  if (i < 0) refuser(`aucun rattachement actif de « ${source} » sur « ${cible} »`);
+  const actifs = liste.map((x, k) => [x, k]).filter(([x]) => x.cle_source === source && !x.defait);
+  if (actifs.length === 0) refuser(`aucun rattachement actif de « ${source} » sur « ${cible} »`);
   if (Object.hasOwn(artefact.findings, source)) refuser(`« ${source} » est déjà dans l'artefact : il n'y a rien à rouvrir`);
-  const r = liste[i];
+  const r = actifs.at(-1)[0];
+  const indices = new Set(actifs.map(([, k]) => k));
+  const ajoute = actifs.reduce((n, [x]) => n + (x.survived_ajoute ?? 0), 0);
   const date = maintenant();
   artefact.findings[source] = {
     severity: r.severity,
@@ -110,8 +116,8 @@ function defairePr(racine, config, cibleArg, cible, source, note) {
   };
   artefact.findings[cible] = {
     ...connu,
-    survived: Math.max(0, (connu.survived ?? 0) - (r.survived_ajoute ?? 0)),
-    rattachements: liste.map((x, k) => (k === i ? { ...x, defait: { date, note } } : x)),
+    survived: Math.max(0, (connu.survived ?? 0) - ajoute),
+    rattachements: liste.map((x, k) => (indices.has(k) ? { ...x, defait: { date, note } } : x)),
   };
   artefact.synthese = { ...(artefact.synthese ?? {}), open_p0_p2: findingsOuverts(artefact).length };
   ecrireJson(chemin, artefact);

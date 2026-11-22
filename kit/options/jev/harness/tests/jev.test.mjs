@@ -650,6 +650,9 @@ describe("défaire un rattachement : rouvrir comme neuf", () => {
     const env = envJev(d, s);
     await okFusion(d, env, [finding(A)], 1);
     await okFusion(d, env, [finding(A2)], 2);
+    await okFusion(d, env, [finding(A2, { p: 2, corps: "Corps le plus récent." })], 3);
+    assert.equal(artefact(d).findings[cle(A)].rattachements.length, 2, "la même reformulation rattachée à deux rounds");
+    assert.equal(artefact(d).findings[cle(A)].survived, 2);
     assert.equal(d.lancer("jev-defaire.mjs", ["pr", "001-jouet", cle(A), cle(A2)]).code, 1, "sans note : refusé");
     const r = d.lancer("jev-defaire.mjs", ["pr", "001-jouet", cle(A), cle(A2), "--note", "Laurent : deux défauts distincts"]);
     assert.equal(r.code, 0, r.erreur);
@@ -658,7 +661,9 @@ describe("défaire un rattachement : rouvrir comme neuf", () => {
     assert.equal(a.findings[cle(A2)].titre, A2);
     assert.equal(a.findings[cle(A2)].survived, 0);
     assert.equal(a.findings[cle(A)].survived, 0);
-    assert.equal(a.findings[cle(A)].rattachements[0].defait.note, "Laurent : deux défauts distincts");
+    assert.equal(a.findings[cle(A)].rattachements.every((x) => x.defait?.note === "Laurent : deux défauts distincts"), true, "tous les rattachements de la source sont défaits");
+    assert.equal(a.findings[cle(A2)].corps, "Corps le plus récent.", "la plus récente donne ce qui est rouvert");
+    assert.equal(a.findings[cle(A2)].severity, "P2");
     assert.equal(a.synthese.open_p0_p2, 2);
     assert.match(d.lire("specs", "001-jouet", "review-pr.md"), /défait le/);
     assert.equal(d.lancer("jev-defaire.mjs", ["pr", "001-jouet", cle(A), cle(A2), "--note", "encore"]).code, 1, "un rattachement se défait une fois");
@@ -672,12 +677,15 @@ describe("défaire un rattachement : rouvrir comme neuf", () => {
     const env = envJev(d, s);
     await roundCode(d, env, 1, [{ titre: A }]);
     await roundCode(d, env, 2, [{ titre: A2 }]);
+    await roundCode(d, env, 3, [{ titre: A2 }]);
+    assert.equal(etatDe(d).review_ledger.code.findings[cle(A)].survived, 2);
     const r = d.lancer("jev-defaire.mjs", ["code", "001-jouet", cle(A), cle(A2), "--note", "deux défauts distincts"]);
     assert.equal(r.code, 0, r.erreur);
     const e = etatDe(d);
     assert.deepEqual(e.review_ledger.code.findings[cle(A2)], { titre: A2, severite: "P1", fichier: "src/garde.py", survived: 0, escalation: null, statut: "ouvert" });
     assert.equal(e.review_ledger.code.findings[cle(A)].survived, 0);
-    assert.equal(e.extensions.jev.rattachements[0].defait.note, "deux défauts distincts");
+    assert.equal(e.extensions.jev.rattachements.length, 2);
+    assert.equal(e.extensions.jev.rattachements.every((x) => x.defait?.note === "deux défauts distincts"), true);
     assert.ok(e.historique.some((h) => /rattachement défait/.test(h.note)));
   });
 });
@@ -730,6 +738,23 @@ describe("jev-mesurer : re-mesurer les seuils", () => {
     assert.equal(s.recus.length, liste.length * 4 + 2, "seule la paire hors de src/ est posée");
     assert.match(exclu.sortie, /4 refusée\(s\) à l'envoi/);
     d.reconfigurer((c) => { c.relecteur.chemins_exclus = ["prive/"]; });
+
+    // Une panne en cours de route : ce qui a été payé est écrit, la panne remonte (code 1).
+    let n = 0;
+    const s2 = await fauxJev(async (corps) => {
+      n += 1;
+      if (n === 1) return { status: 400, corps: { error: { type: "invalid_request" } } };
+      await new Promise((ok) => setTimeout(ok, 150));
+      return { corps: reponse(0.4) };
+    });
+    t.after(s2.fermer);
+    const partiel = d.chemin("harness", ".travail", "scores-3.json");
+    const p3 = await lancer(d, "jev-mesurer.mjs", ["interroger", "--paires", paires, "--scores", partiel], envJev(d, s2));
+    assert.equal(p3.code, 1, p3.sortie);
+    assert.match(p3.erreur, /HTTP 400/);
+    const enVol = Math.floor((s2.recus.length - 1) / 2);
+    assert.ok(enVol >= 1, "des paires étaient en vol au moment de la panne");
+    assert.equal(Object.keys(lireJson(partiel)).length, enVol, "chaque paire en vol, menée au bout, est écrite");
 
     const idAB = liste.find((x) => x.a.titre === A && x.b.titre === B).id;
     const idBruit = liste.find((x) => x.artefact_de_review).id;

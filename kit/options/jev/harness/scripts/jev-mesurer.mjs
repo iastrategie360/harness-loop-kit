@@ -120,20 +120,27 @@ async function interroger(racine, config, cheminPaires, cheminScores, modele) {
     .digest("hex");
   const file = envoyables.filter((p) => deja[p.id]?.empreinte !== empreinte(p));
   let fait = 0;
+  let arret = false;
   async function ouvrier() {
-    while (file.length > 0) {
+    while (file.length > 0 && !arret) {
       const p = file.shift();
-      const s = await scorer(demander, { titre: p.a.titre, corps: p.a.corps }, { titre: p.b.titre, corps: p.b.corps });
+      let s;
+      try {
+        s = await scorer(demander, { titre: p.a.titre, corps: p.a.corps }, { titre: p.b.titre, corps: p.b.corps });
+      } catch (e) {
+        arret = true; // plus aucune paire neuve ne part ; celles déjà en vol finissent
+        throw e;
+      }
       deja[p.id] = { score: s.score, ab: s.ab, ba: s.ba, modele: s.modele, modele_demande: reglages.modele, empreinte: empreinte(p), artefact_de_review: p.artefact_de_review };
       fait += 1;
       if (fait % 20 === 0) ecrireJson(cheminScores, deja);
     }
   }
-  try {
-    await Promise.all(Array.from({ length: 4 }, ouvrier));
-  } finally {
-    ecrireJson(cheminScores, deja);
-  }
+  // Tous les ouvriers finissent avant l'écriture : un score payé n'est jamais perdu.
+  const issues = await Promise.allSettled(Array.from({ length: 4 }, ouvrier));
+  ecrireJson(cheminScores, deja);
+  const echec = issues.find((x) => x.status === "rejected");
+  if (echec) throw echec.reason;
   for (const p of paires.filter((x) => !envoyables.includes(x))) delete deja[p.id];
   ecrireJson(cheminScores, deja);
   console.log(`paires notées : ${Object.keys(deja).length} (dont ${fait} à ce passage), ${refusees} refusée(s) à l'envoi (chemin exclu ou motif de secret) -> ${cheminScores}`);
