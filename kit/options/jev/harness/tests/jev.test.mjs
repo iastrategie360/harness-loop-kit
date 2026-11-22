@@ -873,3 +873,126 @@ describe("jev-mesurer : re-mesurer les seuils", () => {
     sansCle(d, q.sortie, q.erreur, tab.sortie);
   });
 });
+
+// --- Chemins canoniques ---------------------------------------------------------------------
+
+describe("chemins : un seul point de canonicalisation, fermé par défaut", () => {
+  // Le connu et le neuf désignent le MÊME fichier exclu sous deux écritures brutes différentes :
+  // sans canonicalisation, aucune des deux ne correspond au motif, et la paire partirait.
+  // Chaque forme deux fois : la même écriture des deux côtés (seule l'exclusion canonique la
+  // retient), puis deux écritures différentes du même fichier.
+  const formes = [
+    ["« ./ »", "./prive/a.py", "./prive/a.py"],
+    ["« ./ » et « // »", "./prive/a.py", "prive//a.py"],
+    ["« .. »", "src/../prive/a.py", "src/../prive/a.py"],
+    ["« .. » et « ./ »", "src/../prive/a.py", "./src/../prive/./a.py"],
+  ];
+  for (const [nom, connu, neuf] of formes) {
+    test(`un chemin exclu écrit avec ${nom} ne part pas`, async (t) => {
+      const s = await fauxJev(parTitres({}, 0.99));
+      const d = chantier({ config: (c) => { c.relecteur.chemins_exclus = ["prive/"]; } });
+      t.after(async () => { await s.fermer(); d.detruire(); });
+      const env = envJev(d, s);
+      await okFusion(d, env, [finding(A, { fichier: connu })], 1);
+      await okFusion(d, env, [finding(A2, { fichier: neuf })], 2);
+      assert.equal(s.recus.length, 0);
+      assert.equal(Object.hasOwn(artefact(d).findings, cle(A2, neuf)), true, "il reste neuf");
+    });
+  }
+
+  test("un chemin absolu dans le dépôt se ramène au relatif : exclu, il ne part pas ; permis, il se compare", async (t) => {
+    const s = await fauxJev(parTitres({ [`${A}|${A2}`]: 0.9 }, 0.99));
+    const d = chantier({ config: (c) => { c.relecteur.chemins_exclus = ["prive/"]; } });
+    t.after(async () => { await s.fermer(); d.detruire(); });
+    storyEnCode(d);
+    const env = envJev(d, s);
+    await roundCode(d, env, 1, [{ titre: A, fichier: "prive/a.py" }, { titre: B, fichier: "src/b.py" }]);
+    await roundCode(d, env, 2, [{ titre: A2, fichier: d.chemin("prive", "a.py") }]);
+    assert.equal(s.recus.length, 0, "l'absolu d'un exclu ne part pas");
+    await roundCode(d, env, 3, [{ titre: A3, fichier: d.chemin("src", "b.py") }]);
+    assert.equal(s.recus.length, 2, "l'absolu d'un fichier permis se compare au relatif");
+  });
+
+  test("un lien symbolique vers un fichier exclu est exclu", async (t) => {
+    const s = await fauxJev(parTitres({}, 0.99));
+    const d = chantier({ config: (c) => { c.relecteur.chemins_exclus = ["prive/"]; } });
+    t.after(async () => { await s.fermer(); d.detruire(); });
+    const { symlinkSync } = await import("node:fs");
+    d.ecrire("prive/a.py", "CLE = 1\n");
+    symlinkSync("prive/a.py", d.chemin("src-lien.py"));
+    const env = envJev(d, s);
+    await okFusion(d, env, [finding(A, { fichier: "src-lien.py" })], 1);
+    await okFusion(d, env, [finding(A2, { fichier: "./src-lien.py" })], 2);
+    assert.equal(s.recus.length, 0);
+    // Un lien PENDANT vers un exclu pas encore créé, et un lien vers l'extérieur du dépôt.
+    for (const lien of ["lien-pendant.py", "lien-dehors.py"]) {
+      const e = chantier({ config: (c) => { c.relecteur.chemins_exclus = ["prive/"]; } });
+      t.after(e.detruire);
+      symlinkSync(lien === "lien-pendant.py" ? "prive/futur.py" : "../hors-du-depot.py", e.chemin(lien));
+      const envE = envJev(e, s);
+      await okFusion(e, envE, [finding(A, { fichier: lien })], 1);
+      await okFusion(e, envE, [finding(A2, { fichier: `./${lien}` })], 2);
+      assert.equal(s.recus.length, 0, `${lien} ne part pas`);
+    }
+  });
+
+  test("un chemin qui sort du dépôt ne part jamais, même sans aucune exclusion", async (t) => {
+    const s = await fauxJev(parTitres({}, 0.99));
+    const d = chantier();
+    t.after(async () => { await s.fermer(); d.detruire(); });
+    const { symlinkSync } = await import("node:fs");
+    symlinkSync(d.home, d.chemin("vers-dehors"));
+    storyEnCode(d);
+    const env = envJev(d, s);
+    for (const [n, f] of [["1", "../voisin/a.py"], ["2", "../voisin/./a.py"]]) await roundCode(d, env, Number(n), [{ titre: `${A} ${n}`, fichier: f }]);
+    await roundCode(d, env, 3, [{ titre: A, fichier: "/etc/passwd" }]);
+    await roundCode(d, env, 4, [{ titre: A2, fichier: "/etc//passwd" }]);
+    await roundCode(d, env, 5, [{ titre: A3, fichier: "vers-dehors/a.py" }]);
+    await roundCode(d, env, 6, [{ titre: B, fichier: "./vers-dehors/a.py" }]);
+    assert.equal(s.recus.length, 0);
+  });
+
+  test("« ./a.py » et « a.py » sont le même fichier : ils se comparent, et se rattachent", async (t) => {
+    const s = await fauxJev(parTitres({ [`${A}|${A2}`]: 0.9 }));
+    const d = chantier();
+    t.after(async () => { await s.fermer(); d.detruire(); });
+    const env = envJev(d, s);
+    await okFusion(d, env, [finding(A, { fichier: "./src/a.py" })], 1);
+    await okFusion(d, env, [finding(A2, { fichier: "src/a.py" })], 2);
+    assert.equal(s.recus.length, 2);
+    assert.equal(artefact(d).findings[cle(A, "./src/a.py")].rattachements.length, 1);
+  });
+
+  test("jev-mesurer : paires sur le chemin canonique, et chaque écriture brute recontrôlée à l'envoi", async (t) => {
+    const s = await fauxJev(parTitres({}, 0.3));
+    const d = chantier({ actif: false });
+    t.after(async () => { await s.fermer(); d.detruire(); });
+    const env = envJev(d, s);
+    await okFusion(d, env, [finding(A, { fichier: "./src/a.py" }), finding(B, { fichier: "./prive/x.py" })], 1);
+    await okFusion(d, env, [finding(A2, { fichier: "src/a.py" }), finding(A3, { fichier: "src/../prive/x.py" })], 2);
+    const paires = d.chemin("harness", ".travail", "p.json");
+    assert.equal(d.lancer("jev-mesurer.mjs", ["paires", "--sortie", paires]).code, 0);
+    const liste = lireJson(paires);
+    assert.deepEqual(liste.map((p) => [p.fichier, p.a.titre, p.b.titre]).sort(), [["prive/x.py", B, A3], ["src/a.py", A, A2]]);
+    // L'exclusion arrive après la construction : les deux écritures brutes de prive/ sont refusées.
+    d.reconfigurer((c) => { c.relecteur.chemins_exclus = ["prive/"]; });
+    const scores = d.chemin("harness", ".travail", "s.json");
+    const q = await lancer(d, "jev-mesurer.mjs", ["interroger", "--paires", paires, "--scores", scores], env);
+    assert.equal(q.code, 0, q.erreur);
+    assert.equal(s.recus.length, 2, "seule la paire de src/a.py part");
+    assert.equal(s.recus.some((r) => r.brut.includes(A3)), false);
+    // Un fichier de paires retouché : le chemin de la paire dit src/, l'écriture brute d'un des deux
+    // findings dit prive/. Chaque écriture est recontrôlée : la paire ne part pas.
+    const retouche = lireJson(paires).map((p) => (p.fichier === "src/a.py" ? { ...p, id: `${p.id}#r`, b: { ...p.b, fichier: "./prive/x.py" } } : p));
+    const pr = d.ecrire("harness/.travail/p-retouche.json", JSON.stringify(retouche));
+    const q2 = await lancer(d, "jev-mesurer.mjs", ["interroger", "--paires", pr, "--scores", d.chemin("harness", ".travail", "s2.json")], env);
+    assert.equal(q2.code, 0, q2.erreur);
+    assert.equal(s.recus.length, 2, "la paire retouchée ne part pas");
+    // Retouchée vers un AUTRE fichier permis : ce n'est plus une paire du même fichier.
+    const autre = lireJson(paires).map((p) => (p.fichier === "src/a.py" ? { ...p, id: `${p.id}#a`, b: { ...p.b, fichier: "src/autre.py" } } : p));
+    const pa = d.ecrire("harness/.travail/p-autre.json", JSON.stringify(autre));
+    const q3 = await lancer(d, "jev-mesurer.mjs", ["interroger", "--paires", pa, "--scores", d.chemin("harness", ".travail", "s3.json")], env);
+    assert.equal(q3.code, 0, q3.erreur);
+    assert.equal(s.recus.length, 2, "deux fichiers différents : la paire ne part pas");
+  });
+});

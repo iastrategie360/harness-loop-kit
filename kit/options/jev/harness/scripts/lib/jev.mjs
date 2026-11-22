@@ -17,10 +17,10 @@
 // FAIL-OPEN BRUYANT. Toute panne (clé absente, réseau, HTTP non réessayable, réponse mal formée,
 // délai) lève `JevIndisponible` : l'appelant ne rattache alors RIEN et le dit. La review ne doit
 // jamais échouer à cause de cette option.
-import { readFileSync, existsSync, realpathSync } from "node:fs";
+import { readFileSync, existsSync, realpathSync, lstatSync, readlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
-import { join, dirname, resolve, relative, isAbsolute } from "node:path";
+import { join, dirname, basename, resolve, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ressembleAUnSecret } from "../allowlist-verifier.mjs";
 
@@ -209,13 +209,80 @@ export async function scorer(demander, a, b) {
 
 // --- La confidentialité ---------------------------------------------------------------------
 
-// fichiersExclus(racine, fichiers) : un Set des fichiers couverts par relecteur.chemins_exclus,
-// jugés par la fonction du noyau (chemin_exclu de codex-common.sh), la même que celle qui garde
-// le relecteur : une seule sémantique de motifs. Le contrôle impossible lève JevIndisponible :
-// dans le doute, rien ne part.
-export function fichiersExclus(racine, fichiers, env = process.env) {
-  const liste = [...new Set(fichiers.filter((f) => typeof f === "string" && f !== ""))];
-  if (liste.length === 0) return new Set();
+// canoniser(racine, brut) : LE point de canonicalisation des chemins de l'option, même règle que
+// `mistral_canoniser` de l'option mistral (realpath -m -s, puis realpath -m) :
+//   - `lex`, la forme lexicale relative à la racine : « ./ », « .. », barres doublées résolus, un
+//     chemin absolu dans le dépôt ramené au relatif, les liens laissés tels quels (le nom que Git
+//     connaît) ;
+//   - `res`, la forme résolue : liens symboliques suivis sur la partie qui existe (le fichier
+//     qu'on lirait).
+// Rend null (FAIL-CLOSED : l'appelant n'envoie rien) si l'une des deux sort du dépôt, si le chemin
+// est vide ou désigne la racine elle-même, ou s'il ne se canonise pas.
+export function canoniser(racine, brut) {
+  if (typeof brut !== "string" || brut.trim() === "" || brut.includes("\0")) return null;
+  try {
+    const racineLex = resolve(racine);
+    const racineRes = realpathSync(racineLex);
+    const lexAbs = resolve(racineLex, brut);
+    // realpath -m : on suit les liens de la plus longue partie qui existe, le reste est recollé.
+    // Un lien PENDANT (cible absente) se suit aussi, par sa cible écrite : sinon un lien vers un
+    // fichier hors du dépôt, ou vers un exclu pas encore créé, passerait pour un fichier ordinaire.
+    let existant = lexAbs;
+    const reste = [];
+    for (let tours = 0; ; tours++) {
+      if (tours > 64) return null;
+      try {
+        existant = realpathSync(existant);
+        break;
+      } catch (e) {
+        if (e.code !== "ENOENT" && e.code !== "ENOTDIR") return null;
+        let lien = null;
+        try {
+          if (lstatSync(existant).isSymbolicLink()) lien = readlinkSync(existant);
+        } catch { /* le nom lui-même n'existe pas */ }
+        if (lien !== null) {
+          existant = resolve(dirname(existant), lien);
+          continue;
+        }
+        const parent = dirname(existant);
+        if (parent === existant) return null;
+        reste.unshift(basename(existant));
+        existant = parent;
+      }
+    }
+    const resAbs = resolve(existant, ...reste);
+    const dedans = (abs, base) => {
+      const rel = relative(base, abs);
+      return rel !== "" && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel) ? rel : null;
+    };
+    const lex = dedans(lexAbs, racineLex);
+    const res = dedans(resAbs, racineRes);
+    return lex && res ? { lex, res } : null;
+  } catch {
+    return null;
+  }
+}
+
+// controlerChemins(racine, fichiers) : une Map brut -> {canon, refus}. `canon` est la forme
+// lexicale canonique, celle qui sert à comparer « même fichier » ; `refus` dit pourquoi le chemin
+// ne part pas, ou null. L'exclusion se juge sur la forme lexicale ET sur la cible résolue (un lien
+// libre vers un exclu est exclu), par la fonction du noyau (chemin_exclu de codex-common.sh), la
+// même que celle qui garde le relecteur : une seule sémantique de motifs. Le contrôle impossible
+// lève JevIndisponible : dans le doute, rien ne part.
+export function controlerChemins(racine, fichiers, env = process.env) {
+  const bruts = [...new Set(fichiers.filter((f) => typeof f === "string" && f !== ""))];
+  const resultat = new Map();
+  const formes = new Set();
+  for (const b of bruts) {
+    const c = canoniser(racine, b);
+    resultat.set(b, c ? { canon: c.lex, res: c.res, refus: null } : { canon: null, refus: "chemin hors du dépôt, vide, ou impossible à canoniser" });
+    if (c) {
+      formes.add(c.lex);
+      formes.add(c.res);
+    }
+  }
+  const liste = [...formes];
+  if (liste.length === 0) return resultat;
   const script = '. "$1" || exit 90; shift; for f in "$@"; do if chemin_exclu "$f"; then echo 1; else echo 0; fi; done';
   const r = spawnSync("bash", ["-c", script, "jev", CODEX_COMMUN, ...liste], {
     encoding: "utf8", env: { ...env, HARNESS_RACINE: racine }, cwd: racine,
@@ -224,12 +291,24 @@ export function fichiersExclus(racine, fichiers, env = process.env) {
   if (r.status !== 0 || lignes.length !== liste.length || lignes.some((l) => l !== "0" && l !== "1")) {
     throw new JevIndisponible("contrôle des chemins exclus impossible (codex-common.sh)");
   }
-  return new Set(liste.filter((_, i) => lignes[i] === "1"));
+  const exclus = new Set(liste.filter((_, i) => lignes[i] === "1"));
+  for (const v of resultat.values()) {
+    if (v.canon && (exclus.has(v.canon) || exclus.has(v.res))) v.refus = "chemin exclu (relecteur.chemins_exclus), lui-même ou la cible de son lien";
+  }
+  return resultat;
 }
 
-// Le motif qui interdit d'envoyer ce finding, ou null.
-export function refusEnvoi(f, exclus) {
-  if (exclus.has(f.fichier)) return "chemin exclu (relecteur.chemins_exclus)";
+// La forme canonique d'un chemin, ou null s'il n'a pas été contrôlé ou ne se canonise pas.
+export function canonDe(chemins, fichier) {
+  return chemins.get(fichier)?.canon ?? null;
+}
+
+// Le motif qui interdit d'envoyer ce finding, ou null. Un chemin absent de la Map n'a pas été
+// contrôlé : refusé.
+export function refusEnvoi(f, chemins) {
+  const c = chemins.get(f.fichier);
+  if (!c) return "chemin non contrôlé";
+  if (c.refus) return c.refus;
   const secret = ressembleAUnSecret(f.titre) ?? ressembleAUnSecret(f.corps);
   if (secret) return `motif de secret (${secret})`;
   return null;
@@ -263,7 +342,7 @@ async function parLots(taches, n) {
 const arrondi = (x) => Math.round(x * 1000) / 1000;
 
 /**
- * comparer({ neufs, connus, reglages, demander, exclus }) : le coeur de l'option.
+ * comparer({ neufs, connus, reglages, demander, chemins }) : le coeur de l'option.
  *
  *   neufs  : [{cle, titre, corps, fichier, severite}] les findings dont la clé est INCONNUE du
  *            registre ;
@@ -283,15 +362,16 @@ const arrondi = (x) => Math.round(x * 1000) / 1000;
  *      personne ; les autres restent neufs, signalés.
  * Toute panne d'appel remonte (JevIndisponible) : l'appelant ne rattache alors rien.
  */
-export async function comparer({ neufs, connus, reglages, demander, exclus }) {
+export async function comparer({ neufs, connus, reglages, demander, chemins }) {
   const { seuil_haut: haut, seuil_bas: bas } = reglages;
   const signalements = [];
   const paires = [];
   const parNeuf = new Map();
   for (const n of neufs) {
-    if (!n.fichier || !estComparable(n.severite) || refusEnvoi(n, exclus)) continue;
+    const ici = canonDe(chemins, n.fichier);
+    if (!ici || !estComparable(n.severite) || refusEnvoi(n, chemins)) continue;
     const candidats = connus.filter(
-      (c) => c.fichier === n.fichier && estComparable(c.severite) && !refusEnvoi(c, exclus),
+      (c) => canonDe(chemins, c.fichier) === ici && estComparable(c.severite) && !refusEnvoi(c, chemins),
     );
     if (candidats.length === 0) continue;
     parNeuf.set(n.cle, { neuf: n, scores: [] });

@@ -28,7 +28,7 @@ import { chargerConfig, trouverRacine, ecrireJson, maintenant, ErreurConfig } fr
 import { cleFinding, statutTraite } from "./lib/review-pr-artefact.mjs";
 import { STATUTS_TRANCHES } from "./etat.mjs";
 import {
-  JevIndisponible, comparer, preparer, reglagesJev, fichiersExclus, refusEnvoi, plusGrave, estComparable,
+  JevIndisponible, comparer, preparer, reglagesJev, controlerChemins, canoniser, refusEnvoi, plusGrave, estComparable,
   scorer, TAILLE_MAX_CORPS,
 } from "./lib/jev.mjs";
 
@@ -54,10 +54,13 @@ function dire(message) {
 
 // Y a-t-il au moins une paire à poser ? Sans elle, ni clé ni réseau ne sont nécessaires, et
 // l'option n'a rien à dire.
-function pairesPossibles(neufs, connus) {
-  return neufs.some(
-    (n) => n.fichier && estComparable(n.severite) && connus.some((c) => c.fichier === n.fichier && estComparable(c.severite)),
-  );
+// Les chemins se comparent sous leur forme canonique (« ./a.py » et « a.py » sont le même fichier).
+function pairesPossibles(racine, neufs, connus) {
+  const canon = (f) => canoniser(racine, f)?.lex ?? null;
+  return neufs.some((n) => {
+    const ici = canon(n.fichier);
+    return ici && estComparable(n.severite) && connus.some((c) => estComparable(c.severite) && canon(c.fichier) === ici);
+  });
 }
 
 // --- Stage PR -------------------------------------------------------------------------------
@@ -85,14 +88,14 @@ export async function rattacherPr({ racine, config, ancien, nouveaux, headSha, d
       // `corrige`, une absence de statut, ou une coquille : non tranché, donc rattachable.
       tranche: statutTraite(f.statut) && f.statut !== "corrige",
     }));
-  if (!pairesPossibles(neufs, connus)) return nouveaux;
+  if (!pairesPossibles(racine, neufs, connus)) return nouveaux;
 
   const cible = isAbsolute(artefact) ? relative(racine, artefact) : artefact;
   let decision;
   try {
     const { reglages, demander } = preparer(config, racine, env);
-    const exclus = fichiersExclus(racine, [...neufs, ...connus].map((f) => f.fichier), env);
-    decision = { reglages, ...(await comparer({ neufs, connus, reglages, demander, exclus })) };
+    const chemins = controlerChemins(racine, [...neufs, ...connus].map((f) => f.fichier), env);
+    decision = { reglages, ...(await comparer({ neufs, connus, reglages, demander, chemins })) };
   } catch (e) {
     if (!(e instanceof JevIndisponible)) throw e;
     dire(e.message);
@@ -222,13 +225,13 @@ async function code(racine, config, id, cheminFindings, cheminCorps) {
   const date = maintenant();
   const round = ledger.rounds + 1;
 
-  let exclus;
+  let chemins;
   let decision = { rattachements: [], signalements: [], paires: 0 };
   try {
-    exclus = fichiersExclus(racine, [...presents.map((f) => f.fichier), ...connus.map((f) => f.fichier)]);
-    if (pairesPossibles(neufs, connus)) {
+    chemins = controlerChemins(racine, [...presents.map((f) => f.fichier), ...connus.map((f) => f.fichier)]);
+    if (pairesPossibles(racine, neufs, connus)) {
       const { reglages, demander } = preparer(config, racine);
-      decision = await comparer({ neufs, connus, reglages, demander, exclus });
+      decision = await comparer({ neufs, connus, reglages, demander, chemins });
     }
   } catch (err) {
     if (!(err instanceof JevIndisponible)) throw err;
@@ -259,7 +262,7 @@ async function code(racine, config, id, cheminFindings, cheminCorps) {
   const corps = { ...corpsConnus };
   for (const f of presents) {
     const texte = String(corpsDuRound[f.cle] ?? "");
-    if (refusEnvoi({ titre: f.titre, corps: texte, fichier: f.fichier }, exclus)) continue;
+    if (refusEnvoi({ titre: f.titre, corps: texte, fichier: f.fichier }, chemins)) continue;
     corps[parSource.get(f.cle)?.cible.cle ?? f.cle] = texte.slice(0, TAILLE_MAX_CORPS);
   }
   const nouveauxRattachements = decision.rattachements.map((r) => ({

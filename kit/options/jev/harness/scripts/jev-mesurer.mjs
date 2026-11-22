@@ -31,7 +31,7 @@ function ecrireJson(chemin, objet) {
   mkdirSync(dirname(chemin), { recursive: true });
   ecrireJsonBrut(chemin, objet);
 }
-import { JevIndisponible, preparer, scorer, fichiersExclus, refusEnvoi, QUESTION } from "./lib/jev.mjs";
+import { JevIndisponible, preparer, scorer, controlerChemins, canonDe, refusEnvoi, QUESTION } from "./lib/jev.mjs";
 
 const SEUILS_DEFAUT = [0.5, 0.6, 0.7, 0.8, 0.9];
 
@@ -78,26 +78,28 @@ export function construirePaires(racine, config, env = process.env) {
     findings.sort((x, y) => rang(x) - rang(y) || x.cle.localeCompare(y.cle));
     brutes.push({ artefact: relative(racine, chemin), findings });
   }
-  const exclus = fichiersExclus(racine, brutes.flatMap((b) => b.findings.map((f) => f.fichier)), env);
+  const chemins = controlerChemins(racine, brutes.flatMap((b) => b.findings.map((f) => f.fichier)), env);
   const paires = [];
   let ecartes = 0;
   for (const { artefact, findings } of brutes) {
     const envoyables = findings.filter((f) => {
-      const refus = refusEnvoi(f, exclus);
+      const refus = refusEnvoi(f, chemins);
       if (refus) ecartes += 1;
       return !refus;
     });
     for (let i = 0; i < envoyables.length; i++) {
       for (let j = i + 1; j < envoyables.length; j++) {
         const [x, y] = [envoyables[i], envoyables[j]];
-        if (x.fichier !== y.fichier || x.first_seen_sha === y.first_seen_sha) continue;
+        const ici = canonDe(chemins, x.fichier);
+        if (ici !== canonDe(chemins, y.fichier) || x.first_seen_sha === y.first_seen_sha) continue;
         paires.push({
           id: `${artefact}|${x.cle}|${y.cle}`,
           artefact,
-          fichier: x.fichier,
-          artefact_de_review: estArtefactDeReview(x.fichier, config),
-          a: { cle: x.cle, titre: x.titre, corps: x.corps },
-          b: { cle: y.cle, titre: y.titre, corps: y.corps },
+          fichier: ici,
+          artefact_de_review: estArtefactDeReview(ici, config),
+          // Les chemins tels que les artefacts les écrivent : l'envoi les recontrôle tous les deux.
+          a: { cle: x.cle, titre: x.titre, corps: x.corps, fichier: x.fichier },
+          b: { cle: y.cle, titre: y.titre, corps: y.corps, fichier: y.fichier },
         });
       }
     }
@@ -114,9 +116,14 @@ async function interroger(racine, config, cheminPaires, cheminScores, modele) {
   const { reglages, demander } = preparer(configMesure, racine);
   // Les exclusions se rejouent ICI, au moment d'envoyer : le fichier de paires a pu être produit
   // avec d'autres chemins exclus, ou retouché à la main.
-  const exclus = fichiersExclus(racine, paires.map((p) => p.fichier));
+  const chemins = controlerChemins(racine, paires.flatMap((p) => [p.fichier, p.a.fichier ?? p.fichier, p.b.fichier ?? p.fichier]));
   const envoyables = paires.filter(
-    (p) => !refusEnvoi({ ...p.a, fichier: p.fichier }, exclus) && !refusEnvoi({ ...p.b, fichier: p.fichier }, exclus),
+    // Les deux écritures brutes doivent désigner le fichier canonique de la paire (sinon la paire
+    // est retouchée ou fausse), et ce fichier doit être envoyable.
+    (p) => canonDe(chemins, p.fichier) !== null
+      && [p.a.fichier ?? p.fichier, p.b.fichier ?? p.fichier].every((f) => canonDe(chemins, f) === canonDe(chemins, p.fichier))
+      && !refusEnvoi({ titre: p.a.titre, corps: p.a.corps, fichier: p.fichier }, chemins)
+      && !refusEnvoi({ titre: p.b.titre, corps: p.b.corps, fichier: p.fichier }, chemins),
   );
   const refusees = paires.length - envoyables.length;
   // Un score déjà noté ne se reprend que pour le même contexte : même modèle demandé, même
