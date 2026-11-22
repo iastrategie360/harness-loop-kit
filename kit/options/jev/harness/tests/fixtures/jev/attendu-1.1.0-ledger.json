@@ -1,0 +1,31 @@
+{
+  "code": {
+    "rounds": 2,
+    "findings": {
+      "src-garde-py--la-garde-accepte-une-chaine-vide": {
+        "titre": "La garde accepte une chaîne vide",
+        "severite": "P1",
+        "fichier": "src/garde.py",
+        "survived": 0,
+        "escalation": null,
+        "statut": "corrige"
+      },
+      "src-garde-py--le-message-d-erreur-ne-nomme-pas-le-champ": {
+        "titre": "Le message d'erreur ne nomme pas le champ",
+        "severite": "P2",
+        "fichier": "src/garde.py",
+        "survived": 1,
+        "escalation": null,
+        "statut": "ouvert"
+      },
+      "src-garde-py--une-valeur-vide-passe-encore-la-garde": {
+        "titre": "Une valeur vide passe encore la garde",
+        "severite": "P1",
+        "fichier": "src/garde.py",
+        "survived": 0,
+        "escalation": null,
+        "statut": "ouvert"
+      }
+    }
+  }
+}

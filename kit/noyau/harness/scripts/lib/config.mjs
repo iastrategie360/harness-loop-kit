@@ -21,8 +21,10 @@ export const DOSSIER_SCHEMAS = join(ICI, "..", "..", "schemas");
 // L'ORDRE compte : à un même point d'extension, une option qui produit des items (personas)
 // passe avant celle qui les filtre (valeur), et celle qui ferme le chantier (creneaux) en dernier.
 // `mistral` (1.1.0) n'a que des points à elle ; elle passe après le filtre de valeur, qui retire
-// des findings avant toute escalade.
-export const NOMS_OPTIONS = ["personas", "valeur", "mistral", "note_story", "creneaux"];
+// des findings avant toute escalade. `jev` (1.2.0) lit les findings APRÈS les relectures (elle
+// partage le point `apres_review_pr` avec mistral : la relecture sécurité d'abord, la lecture
+// des signalements ensuite).
+export const NOMS_OPTIONS = ["personas", "valeur", "mistral", "jev", "note_story", "creneaux"];
 
 export class ErreurConfig extends Error {}
 
@@ -59,7 +61,25 @@ export function chargerConfig(racine = trouverRacine()) {
   if (erreurs.length > 0) {
     throw new ErreurConfig(`configuration invalide (${chemin}) :\n${formater(erreurs)}`);
   }
+  const croisees = controlesCroises(config);
+  if (croisees.length > 0) {
+    throw new ErreurConfig(`configuration invalide (${chemin}) :\n${formater(croisees)}`);
+  }
   return config;
+}
+
+// Les contraintes qui lient deux valeurs, et que le schéma ne sait pas dire. Même forme que les
+// erreurs du validateur, pour un seul message de refus.
+export function controlesCroises(config) {
+  const erreurs = [];
+  // Option jev (1.2.0), clé absente d'une configuration 1.1.0 : rien à contrôler. Deux seuils
+  // égaux ou inversés vident la bande douteuse, ou rendent la re-détection plus facile que le
+  // simple signalement : refusé, jamais corrigé en silence.
+  const jev = config.options?.jev;
+  if (jev && typeof jev.seuil_bas === "number" && typeof jev.seuil_haut === "number" && !(jev.seuil_bas < jev.seuil_haut)) {
+    erreurs.push({ chemin: "/options/jev/seuil_bas", message: `doit être strictement inférieur à seuil_haut (${jev.seuil_bas} >= ${jev.seuil_haut})` });
+  }
+  return erreurs;
 }
 
 // lire(config, "git.branche_integration") : undefined si le chemin n'existe pas.
@@ -86,6 +106,11 @@ export function securiteExigee(config) {
 export function trancheActive(config) {
   const m = config.options?.mistral;
   return m?.actif === true && m.arbitre === true && m.tranche_finale === true;
+}
+
+// L'option `jev` est arrivée en 1.2.0 : même règle, une clé absente rend `false`.
+export function jevActive(config) {
+  return config.options?.jev?.actif === true;
 }
 
 // Date du jour et horodatage. HARNESS_DATE fige l'horloge pour les tests.
@@ -193,6 +218,7 @@ function principal(args) {
         base_rouge: reste.includes("--base-rouge") ? true : exit !== 0 ? conteneur[cle].base_rouge : false,
       };
       const erreurs = valider(lireSchema("projet.schema.json"), config);
+      erreurs.push(...(erreurs.length === 0 ? controlesCroises(config) : []));
       if (erreurs.length > 0) throw new ErreurConfig(`écriture refusée :\n${formater(erreurs)}`);
       ecrireJson(cheminConfig(racine), config);
       console.log(`preuve enregistrée : ${nom} (exit ${exit}, ${duree} s)`);

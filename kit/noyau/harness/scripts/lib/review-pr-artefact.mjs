@@ -457,11 +457,22 @@ const RANG_SEVERITE = { P0: 0, P1: 1, "P?": 2, P2: 2, P3: 3 };
 function plusGravesParCle(nouveaux) {
   const parCle = new Map();
   for (const nf of nouveaux) {
-    const cle = cleFinding(nf.file, nf.titre);
+    const cle = cleDuNouveau(nf);
     const deja = parCle.get(cle);
     if (!deja || (RANG_SEVERITE[nf.severity] ?? 2) < (RANG_SEVERITE[deja.severity] ?? 2)) parCle.set(cle, nf);
   }
   return [...parCle.values()];
+}
+
+/**
+ * La cle sous laquelle un finding rendu par la review entre dans l'artefact. C'est TOUJOURS
+ * fichier + titre, sauf quand l'option `jev` (1.2.0) a reconnu la reformulation d'un finding
+ * connu et non tranche : elle pose alors `cle` sur le finding, celle du connu, avec la trace du
+ * rattachement (`rattachement`). Sans l'option, aucun finding ne porte `cle` : la fusion est
+ * celle de 1.1.0.
+ */
+function cleDuNouveau(nf) {
+  return typeof nf.cle === "string" && nf.cle !== "" ? nf.cle : cleFinding(nf.file, nf.titre);
 }
 
 export function fusionner(ancien, nouveaux, contexte) {
@@ -475,7 +486,7 @@ export function fusionner(ancien, nouveaux, contexte) {
   const vus = new Set();
 
   for (const nf of plusGravesParCle(nouveaux)) {
-    const cle = cleFinding(nf.file, nf.titre);
+    const cle = cleDuNouveau(nf);
     vus.add(cle);
     const existant = artefact.findings[cle];
 
@@ -496,6 +507,9 @@ export function fusionner(ancien, nouveaux, contexte) {
         auto: false,
         escalation: null,
         reouvertures: [],
+        // Option jev : un doublon PROBABLE d'un finding tranche, ou un cas douteux. Le finding
+        // reste neuf et bloquant ; la trace dit au superviseur ce qu'il doit confirmer.
+        ...(nf.signalements?.length ? { signalements: nf.signalements } : {}),
       };
       continue;
     }
@@ -524,6 +538,16 @@ export function fusionner(ancien, nouveaux, contexte) {
       ];
     }
     // Cas 5 : statut delibere -> rien a faire, il est conserve tel quel.
+
+    // Option jev : la reformulation rattachee laisse sa trace sur le finding connu, avec ce
+    // qu'elle a ajoute a la persistance, pour qu'un humain puisse la defaire (jev-defaire.mjs).
+    if (nf.rattachement) {
+      maj.rattachements = [
+        ...(existant.rattachements ?? []),
+        { ...nf.rattachement, survived_ajoute: (maj.survived ?? 0) - (existant.survived ?? 0) },
+      ];
+    }
+    if (nf.signalements?.length) maj.signalements = [...(existant.signalements ?? []), ...nf.signalements];
 
     artefact.findings[cle] = maj;
   }
@@ -868,6 +892,14 @@ export function genererMarkdown(artefact) {
       if (f.escalation) l.push(`**Escalade** : ${f.escalation}`);
       if ((f.reouvertures ?? []).length > 0) {
         l.push(`**Réouvertures** : ${f.reouvertures.length}`);
+      }
+      // Option jev : absents sans elle, donc le rendu de 1.1.0 ne change pas.
+      for (const r of f.rattachements ?? []) {
+        const etat = r.defait ? ` (défait le ${r.defait.date} : ${r.defait.note})` : "";
+        l.push(`**Rattachement (option jev)** : « ${r.titre} » reconnu comme ce même défaut, score ${r.score}, modèle ${r.modele}, depuis \`${r.cle_source}\`${etat}`);
+      }
+      for (const sg of f.signalements ?? []) {
+        l.push(`**Signalement (option jev)** : ${sg.motif}`);
       }
       l.push("");
     }

@@ -1,0 +1,14 @@
+[
+  {
+    "cle": "src-garde-py--une-valeur-vide-passe-encore-la-garde",
+    "titre": "Une valeur vide passe encore la garde",
+    "severite": "P1",
+    "fichier": "src/garde.py"
+  },
+  {
+    "cle": "src-garde-py--le-message-d-erreur-ne-nomme-pas-le-champ",
+    "titre": "Le message d'erreur ne nomme pas le champ",
+    "severite": "P2",
+    "fichier": "src/garde.py"
+  }
+]

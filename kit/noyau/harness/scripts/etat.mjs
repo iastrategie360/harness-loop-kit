@@ -27,7 +27,8 @@ import {
 export const ORDRE = ["INIT", "SPEC", "CHALLENGE", "PLAN", "PLAN_REVIEW", "CODE", "QA", "PR", "REGARD", "NOTE", "DONE"];
 const TRAVAIL = ORDRE.filter((s) => s !== "DONE");
 const GATES = ["spec", "plan", "scope", "arbitrage", "merge"];
-const STATUTS_TRANCHES = ["faux_positif", "tranche", "differe_valeur", "ecarte_valeur"];
+// Exporté pour l'option jev : un finding tranché ne se rattache jamais d'office.
+export const STATUTS_TRANCHES = ["faux_positif", "tranche", "differe_valeur", "ecarte_valeur"];
 const PROTEGEES = [
   "schema", "story", "stage", "previous_stage", "tours", "echecs_consecutifs",
   "dernier_pas_en_echec", "gates", "rigueur", "rigueur_motif",

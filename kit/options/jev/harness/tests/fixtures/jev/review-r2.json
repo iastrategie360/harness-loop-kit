@@ -1,0 +1,21 @@
+{
+  "findings": [
+    {
+      "title": "Une valeur vide passe encore la garde",
+      "body": "Après le correctif, garde(\"\") rend toujours True : la comparaison ne porte que sur None.",
+      "priority": 1,
+      "file": "src/garde.py",
+      "line_start": 3,
+      "line_end": 3
+    },
+    {
+      "title": "Le message d'erreur ne nomme pas le champ",
+      "body": "Toujours aucun nom de champ dans le message levé.",
+      "priority": 2,
+      "file": "src/garde.py",
+      "line_start": 6,
+      "line_end": 7
+    }
+  ],
+  "overall_explanation": "Le défaut de la garde est re-signalé."
+}

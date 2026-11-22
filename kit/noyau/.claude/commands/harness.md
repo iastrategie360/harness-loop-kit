@@ -107,8 +107,8 @@ porter une section `## Point d'extension : <point>`. Quand la procédure ci-dess
 point (**→ point `<nom>`**), exécute la section correspondante de chaque option active qui
 en a une, puis reprends ici. Une option absente ou inactive ne change rien. Les points :
 
-`avant_la_branche` · `a_l_init` · `apres_challenge` · `apres_plan` · `avant_tfix` ·
-`a_l_arbitrage` · `avant_escalade_humaine` · `apres_review_pr` · `au_regard` ·
+`avant_la_branche` · `a_l_init` · `apres_challenge` · `apres_plan` · `avant_ledger_round` ·
+`avant_tfix` · `a_l_arbitrage` · `avant_escalade_humaine` · `apres_review_pr` · `au_regard` ·
 `au_stage_note` · `avant_gate_merge` · `a_la_cloture`
 
 Deux de ces points REMPLACENT un geste au lieu de s'y ajouter : à `a_l_arbitrage`, une option
@@ -366,7 +366,9 @@ Quand il n'y a PLUS de tâche non cochée :
 
 1. `bash harness/scripts/codex-diff-review.sh`. Il affiche le chemin du rapport et celui du
    fichier de findings (`<rapport>.findings.json` : `[{cle, titre, severite, fichier}]`).
-2. **Réconcilie les clés** avant tout : compare chaque finding à ceux du ledger
+2. **→ point `avant_ledger_round`** (une option peut reconnaître elle-même une reformulation et
+   réécrire sa clé dans le fichier de findings, et te signaler les cas qu'elle laisse ouverts).
+   Puis **réconcilie les clés** de ce qui reste : compare chaque finding à ceux du ledger
    (`etat.mjs lire <id> review_ledger.code.findings`). Le MÊME défaut reformulé, ou déplacé de
    quelques lignes, doit porter la MÊME clé qu'au round précédent : corrige le fichier de
    findings en conséquence. Sans ce geste, un défaut tenace passe pour neuf à chaque round et
@@ -446,7 +448,8 @@ qui ne démarre pas) est un échec réel.
    Code 1 : aucun artefact, donc aucune certification : échec réel du pas. Code 0 : commit et
    push de `<specs>/<id>/review-pr.json` et `review-pr.md`, nommés un par un. Puis
    **→ point `apres_review_pr`** : une option peut ajouter une relecture, toujours APRÈS
-   celle-ci, jamais en même temps.
+   celle-ci, jamais en même temps, ou te demander de lire ce qu'elle a signalé pendant la
+   fusion de l'artefact.
 3. **Lire le verdict.** `node harness/scripts/review-locale.mjs <id>`.
    - Code 0 : `etat.mjs stage <id>` vers le stage suivant : `REGARD` si `regard_client`, sinon
      `NOTE` si l'option est active, sinon la gate de merge (ci-dessous).

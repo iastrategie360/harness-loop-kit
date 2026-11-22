@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "branche": "feat/001-jouet",
+  "base": "main",
+  "head_sha": "2222222222222222222222222222222222222222",
+  "date": "2030-01-16T10:00:00Z",
+  "modele": "faux",
+  "rounds": 2,
+  "reviews": [
+    {
+      "date": "2030-01-15T10:00:00Z",
+      "head_sha": "1111111111111111111111111111111111111111",
+      "resultat": "findings",
+      "extraction": "schema"
+    },
+    {
+      "date": "2030-01-16T10:00:00Z",
+      "head_sha": "2222222222222222222222222222222222222222",
+      "resultat": "findings",
+      "extraction": "schema"
+    }
+  ],
+  "findings": {
+    "src-garde-py--la-garde-accepte-une-chaine-vide": {
+      "severity": "P1",
+      "file": "src/garde.py",
+      "lines": [
+        2,
+        2
+      ],
+      "titre": "La garde accepte une chaîne vide",
+      "corps": "garde() rend True pour une chaîne vide : seule la valeur None est refusée, alors que la spec exige de refuser toute valeur vide.",
+      "first_seen_sha": "1111111111111111111111111111111111111111",
+      "last_seen_sha": "1111111111111111111111111111111111111111",
+      "survived": 0,
+      "statut": "corrige",
+      "note": "absent de la re-review de 2222222",
+      "date_statut": "2030-01-16T10:00:00Z",
+      "auto": true,
+      "escalation": null,
+      "reouvertures": []
+    },
+    "src-garde-py--le-message-d-erreur-ne-nomme-pas-le-champ": {
+      "severity": "P2",
+      "file": "src/garde.py",
+      "lines": [
+        6,
+        7
+      ],
+      "titre": "Le message d'erreur ne nomme pas le champ",
+      "corps": "Toujours aucun nom de champ dans le message levé.",
+      "first_seen_sha": "1111111111111111111111111111111111111111",
+      "last_seen_sha": "2222222222222222222222222222222222222222",
+      "survived": 1,
+      "statut": null,
+      "note": null,
+      "date_statut": null,
+      "auto": false,
+      "escalation": null,
+      "reouvertures": []
+    },
+    "src-garde-py--coquille-dans-le-commentaire-d-en-tete": {
+      "severity": "P3",
+      "file": "src/garde.py",
+      "lines": [
+        1,
+        1
+      ],
+      "titre": "Coquille dans le commentaire d'en-tête",
+      "corps": "« valuer » au lieu de « valeur ».",
+      "first_seen_sha": "1111111111111111111111111111111111111111",
+      "last_seen_sha": "1111111111111111111111111111111111111111",
+      "survived": 0,
+      "statut": "corrige",
+      "note": "absent de la re-review de 2222222",
+      "date_statut": "2030-01-16T10:00:00Z",
+      "auto": true,
+      "escalation": null,
+      "reouvertures": []
+    },
+    "src-garde-py--une-valeur-vide-passe-encore-la-garde": {
+      "severity": "P1",
+      "file": "src/garde.py",
+      "lines": [
+        3,
+        3
+      ],
+      "titre": "Une valeur vide passe encore la garde",
+      "corps": "Après le correctif, garde(\"\") rend toujours True : la comparaison ne porte que sur None.",
+      "first_seen_sha": "2222222222222222222222222222222222222222",
+      "last_seen_sha": "2222222222222222222222222222222222222222",
+      "survived": 0,
+      "statut": null,
+      "note": null,
+      "date_statut": null,
+      "auto": false,
+      "escalation": null,
+      "reouvertures": []
+    }
+  },
+  "synthese": {
+    "verdict": "Le défaut de la garde est re-signalé.",
+    "open_p0_p2": 2
+  },
+  "_lecture": {
+    "head_sha": "Commit reviewe par la DERNIERE review enregistree. Il est normalement en retard sur le HEAD de la branche : le commit qui enregistre une review suit celui qu'elle a examine. Ce n'est pas un defaut. La gate (harness/scripts/review-locale.mjs) tranche : elle rend 3 si du CODE a change depuis, et tolere les commits qui ne touchent que l'artefact ou les documents narratifs de gestion de la story.",
+    "statut": "Un finding P0-P2 ne cesse de bloquer que si `statut` vaut l'une des valeurs documentees (corrige, refute, faux_positif, perime, differe_valeur, ecarte_valeur). Toute autre valeur, y compris une coquille, laisse le finding bloquant."
+  }
+}

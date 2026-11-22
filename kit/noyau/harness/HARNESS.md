@@ -170,6 +170,17 @@ l'approbateur doit avoir.
 Un finding tranché le reste. S'il est re-signalé, on le note et on passe : rouvrir le débat à
 chaque tour annule l'intérêt de l'avoir tranché.
 
+La clé a un point faible : le titre, c'est le relecteur qui l'écrit. Quand il **reformule** un
+défaut connu, la clé change, le défaut passe pour neuf, sa persistance repart à zéro et
+l'échelle ne le voit jamais ; au stage PR, le connu absent sous son ancien titre est même tenu
+pour corrigé. Sans option, le superviseur réconcilie les clés à la main au stage CODE. L'option
+`jev` pose la question à un modèle de décision, finding neuf contre findings connus du même
+fichier, et rattache la reformulation d'un défaut connu NON tranché à sa clé : c'est le sens
+sûr, le finding reste ouvert et bloquant, il est seulement reconnu. Elle ne rattache jamais à un
+finding tranché (ce serait le faire taire) : elle le signale, et c'est au superviseur de
+confirmer par un statut délibéré. Chaque rattachement se lit dans l'état ou l'artefact, et se
+défait.
+
 ## Pourquoi la review de PR est un fichier commité
 
 Attendre qu'un service poste sa review sur la PR, c'est dépendre d'un tiers qui peut se taire
@@ -250,7 +261,7 @@ Sans elle, « le harness ne merge jamais » est une consigne. Avec elle, c'est u
 
 ## Les options
 
-Le noyau suffit. Cinq options s'y branchent sans le modifier, par des points d'extension
+Le noyau suffit. Six options s'y branchent sans le modifier, par des points d'extension
 que le superviseur nomme dans sa procédure. Chacune s'explique dans son propre fichier,
 `harness/options/<nom>.md` :
 
@@ -261,6 +272,7 @@ que le superviseur nomme dans sa procédure. Chacune s'explique dans son propre 
 | `note_story` | dans six mois, où lira-t-on ce que cette story a décidé ? |
 | `creneaux` | peut-on mener deux stories en même temps sans qu'elles se marchent dessus ? |
 | `mistral` | un second service relit-il la sécurité de chaque PR, et départage-t-il les désaccords ? |
+| `jev` | ce finding « neuf » n'est-il pas un défaut connu, reformulé par le relecteur ? |
 
 N'en active aucune avant d'avoir mené quelques stories avec le noyau seul : une option répond
 à un problème qu'on a eu, pas à un problème qu'on imagine.

@@ -152,7 +152,8 @@ Trois lots demandent plus que de noter la réponse :
   Pour `creneaux`, la réponse conseillée à une première installation est non. Pour `mistral`,
   sa sous-question d'accord (`options.mistral.accord_envoi_externe`) se pose comme H1 : telle
   quelle, sans la pré-remplir, et seulement un oui explicite vaut `true`. Un oui à H1 ne vaut
-  pas pour ce second service.
+  pas pour ce second service. Même règle pour `jev` et son accord
+  (`options.jev.accord_envoi_externe`) : un troisième service, hébergé aux États-Unis.
 
 **Mode `--reponses <fichier>`** : lis le fichier, valide sa forme (fin du questionnaire),
 copie-le dans `harness/install/reponses.json`, et ne pose que ce qui manque. N'y entrent
@@ -164,7 +165,7 @@ défaut celle de l'exemple, et chaque valeur ainsi prise sans confirmation est l
 compte rendu. Trois réserves, même dans ce mode :
 
 - `relecteur.accord_envoi_externe` ne se déduit jamais (absent, il vaut `false`), ni
-  `options.mistral.accord_envoi_externe`, ni l'application de l'allowlist (absente, elle vaut
+  `options.mistral.accord_envoi_externe`, ni `options.jev.accord_envoi_externe`, ni l'application de l'allowlist (absente, elle vaut
   « non ») ;
 - certaines valeurs de l'exemple sont des **illustrations**, pas des défauts : le contenu de
   `projet.regles_style` et de `rigueur.declencheurs`. Sans réponse ni détection, ces deux
@@ -249,6 +250,26 @@ l'index des notes se crée seul à la première story) :
 
   Code 0 : Mistral répond, la clé et le réseau marchent. Sans cet appel, le compte rendu écrit
   « relecture sécurité : non prouvée (appel réel non fait) ».
+- **jev** : même geste, prouver plutôt que croire.
+
+  ```bash
+  node harness/scripts/jev-rattacher.mjs preflight
+  ```
+
+  Il contrôle l'accord et la PRÉSENCE de la clé (`TYPESAFE_API_KEY`, sinon le fichier
+  `options.jev.fichier_cle`), sans jamais l'afficher ni l'ouvrir toi-même. Un refus : rapporte le
+  motif tel quel. L'option ne bloque rien (sans clé, elle se tait et le dit), mais une option
+  qui se tait à chaque round n'aide personne : propose de la couper. Puis, si l'utilisateur
+  accepte un appel réel :
+
+  ```bash
+  node harness/scripts/jev-rattacher.mjs preflight --appel
+  ```
+
+  Code 0 : Jev répond, et le modèle qui a répondu est affiché. S'il n'est pas celui de
+  `options.jev.modele`, dis-le : les seuils ne valent que pour la version mesurée. Sans cet appel,
+  le compte rendu écrit « reconnaissance des reformulations : non prouvée (appel réel non
+  fait) ».
 
 Contrôle enfin que le harness tient debout sur cette machine :
 
@@ -477,11 +498,13 @@ node harness/.kit/noyau/harness/scripts/kit-poser.mjs plan
   l'ancienne n'avait pas, et le refus la nomme. Pose la question correspondante
   (`harness/.kit/docs/QUESTIONNAIRE.md`), ajoute la clé, revalide. Tu ne modifies rien
   d'autre dans `harness/projet.json`.
-  Une configuration posée en 1.0.0 n'a pas la clé `options.mistral` : ce n'est PAS ce cas.
+  Une configuration posée en 1.0.0 n'a pas la clé `options.mistral`, ni une configuration
+  posée en 1.1.0 la clé `options.jev` : ce n'est PAS ce cas.
   Elle reste valide, et le harness s'y comporte exactement comme en 1.0.0. N'ajoute la clé que
   si l'utilisateur veut l'option : recopie alors le bloc `options.mistral` de
   `harness/.kit/noyau/harness/projet.exemple.json`, pose la question J5 et ses
   sous-questions, revalide, puis traite l'option comme « nouvellement activée » ci-dessous.
+  Même chose pour `options.jev` et la question J6.
 - **`mode : à jour`** : rien à poser. Dis-le, et propose seulement de rejouer les preuves
   (étape 5) ou l'essai à blanc (étape 7) si l'utilisateur doute de son installation.
 - **`mode : mise à jour`** ou **`mode : réparation`** (un fichier manque, ou une option vient

@@ -234,6 +234,7 @@ on passe `actif` à `true`, puis on relance `/harness-install`.
 | J3 | **note_story** : veux-tu une note par story, écrite avant la gate de merge, et un index de toutes les notes ? | `options.note_story.actif` | où vit l'index (`options.note_story.index`) |
 | J4 | **creneaux** (expérimentale) : veux-tu mener deux stories en même temps, dans deux arbres de travail ? | `options.creneaux.actif` | le port de chaque arbre (`ports.a`, `ports.b`) ; ce qu'un seul chantier peut porter à la fois (`ressources_exclusives[]`) ; ce qu'il faut relier dans le second arbre (`liens[]`) |
 | J5 | **mistral** : veux-tu qu'un second service, Mistral, relise la sécurité de chaque PR (la gate l'exigera), arbitre les désaccords et tranche ceux qui durent ? (prérequis : `vibe` 2.13 ou plus et ripgrep ; les motifs de H2 en segments entiers) | `options.mistral.actif` | **l'accord d'envoi à ce second service** (`options.mistral.accord_envoi_externe`, posé comme H1) ; les trois gestes voulus (`securite_pr`, `arbitre`, `tranche_finale`) ; le budget d'une relecture (`plafonds.budget_revue_usd`) ; les fichiers que la relecture sécurité ne relit pas (`exclusions[]`) |
+| J6 | **jev** : veux-tu qu'un modèle de décision, Jev (TypeSafe AI), reconnaisse un finding que le relecteur a reformulé, pour que la persistance monte et que l'escalade se déclenche ? (prérequis : une clé TypeSafe AI) | `options.jev.actif` | **l'accord d'envoi à ce service** (`options.jev.accord_envoi_externe`, posé comme H1) ; où est la clé si ce n'est ni `TYPESAFE_API_KEY` ni le fichier par défaut (`options.jev.fichier_cle`) ; garder le modèle et les seuils mesurés (`modele`, `seuil_haut`, `seuil_bas`), ou les re-mesurer d'abord |
 
 Quelques repères pour répondre :
 
@@ -255,6 +256,13 @@ Quelques repères pour répondre :
   Les exclusions par défaut écartent le Markdown et les verrous de dépendances : retire
   `**/*.md` si ton dépôt porte des instructions pour agents en Markdown, elles peuvent cacher
   une consigne dangereuse.
+- **jev** vaut quand la boucle de review tourne sans converger parce que le relecteur réécrit ses
+  titres : sans elle, c'est toi qui reconnais le défaut reformulé. Elle envoie le titre et le
+  corps des findings à TypeSafe AI, hébergé aux États-Unis, sans durée de conservation fixée :
+  son accord est distinct de H1 et de celui de `mistral`. Elle ne ferme rien et ne bloque rien
+  (une panne la fait taire, elle le dit). Ses seuils ont été mesurés sur un autre dépôt, avec
+  une version précise du modèle : le modèle est épinglé, jamais un alias, et
+  `harness/options/jev.md` dit comment re-mesurer.
 - **creneaux** : réponds non à la première installation. Active-la quand une story longue
   bloque les petites. Pour `liens`, les candidats sont le dossier des dépendances installées
   et les réglages locaux de l'outil ; **jamais** un fichier d'environnement qui pointe vers

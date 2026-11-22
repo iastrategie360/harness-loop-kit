@@ -22,19 +22,22 @@ arrêtée.
 | `codex` (CLI), authentifié | le relecteur : un AUTRE modèle que celui qui écrit, toujours en lecture seule |
 | `gh`, authentifié | seulement si la forge est GitHub |
 | `vibe` (CLI de Mistral) 2.13 ou plus, avec une clé, et `rg` (ripgrep) | seulement avec l'option `mistral` : sans ripgrep, l'outil de recherche de vibe ne sait plus exclure un dossier interdit, et l'option refuse de partir |
+| une clé TypeSafe AI, et l'accès réseau à son API | seulement avec l'option `jev` : sans elle, l'option se tait et le dit, rien ne bloque |
 
 Le kit a été vérifié sous **Linux** seulement.
 
 Le relecteur envoie des extraits du code à un service externe. L'installateur demande un
 accord explicite avant le premier envoi ; sans accord, les relectures sont refusées, et le
 harness le dit au lieu de faire semblant. L'option `mistral` envoie à un SECOND service : elle
-demande son propre accord, et refuse de partir sans lui.
+demande son propre accord, et refuse de partir sans lui. L'option `jev` envoie le titre et le
+corps des findings à un troisième, TypeSafe AI, hébergé aux États-Unis : même règle, son propre
+accord.
 
 ## Installer, en deux gestes
 
 ```bash
-unzip harness-loop-kit-1.1.0.zip
-bash harness-loop-kit-1.1.0/poser.sh /chemin/du/projet
+unzip harness-loop-kit-1.2.0.zip
+bash harness-loop-kit-1.2.0/poser.sh /chemin/du/projet
 ```
 
 `poser.sh` dépose le kit dans `<projet>/harness/.kit/` et la commande d'installation dans
@@ -96,7 +99,7 @@ docs/
   QUESTIONNAIRE.md   toutes les questions de l'installateur, par lots
   LECONS.md          74 leçons tirées de l'usage réel, classées par thème
 kit/noyau/           le harness : commandes, agents, scripts, schémas, gabarits, tests
-kit/options/         cinq options, proposées une par une à l'installation
+kit/options/         six options, proposées une par une à l'installation
 ```
 
 Après installation, le projet porte :
@@ -117,7 +120,7 @@ Après installation, le projet porte :
 jour ne l'écrase pas : elle pose la nouvelle version à côté, en `<fichier>.nouveau`, et te le
 dit.
 
-## Les cinq options
+## Les six options
 
 | Option | Ce qu'elle ajoute | Quand l'activer |
 |---|---|---|
@@ -126,6 +129,7 @@ dit.
 | `note_story` | une note durable par story, exigée avant la gate de merge | tu veux retrouver dans six mois pourquoi une décision a été prise |
 | `creneaux` | deux stories en parallèle, dans deux arbres de travail | **expérimentale**, à laisser éteinte au début |
 | `mistral` | un second service, Mistral : une relecture sécurité de chaque PR, exigée par la gate, puis l'arbitre et une tranche finale contraignante pour les désaccords qui durent | le projet touche à des accès, de l'argent ou des données personnelles, et tu acceptes d'envoyer le diff à un second fournisseur (coût plafonné par relecture). Il faut `vibe` 2.13 ou plus et ripgrep |
+| `jev` | un modèle de décision, Jev (TypeSafe AI), reconnaît un finding reformulé par le relecteur et le rattache à la clé du défaut connu : la persistance monte, l'escalade se déclenche. Il ne ferme rien, ne rattache jamais à un finding tranché (il le signale) | la boucle de review tourne sans converger parce que le relecteur réécrit ses titres, et tu acceptes d'envoyer titres et corps des findings à ce service. Il faut une clé TypeSafe AI |
 
 Conseil : commencer sans aucune. Une option s'active plus tard en passant son `actif` à
 `true` dans `harness/projet.json`, puis en relançant `/harness-install`.

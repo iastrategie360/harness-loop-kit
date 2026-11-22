@@ -106,7 +106,10 @@ for piece in LISEZMOI.md VERSION poser.sh verifier-kit.sh \
   kit/options/mistral/harness/scripts/lib/profil-vibe.mjs kit/options/mistral/harness/vibe/agents/relecteur.toml \
   kit/options/mistral/harness/vibe/agents/sans-outils.toml \
   kit/options/mistral/harness/schemas/simplification.json kit/options/mistral/harness/tests/mistral.test.mjs \
-  kit/options/mistral/harness/tests/faux/vibe; do
+  kit/options/mistral/harness/tests/faux/vibe \
+  kit/options/jev/harness/options/jev.md kit/options/jev/harness/scripts/lib/jev.mjs \
+  kit/options/jev/harness/scripts/jev-rattacher.mjs kit/options/jev/harness/scripts/jev-defaire.mjs \
+  kit/options/jev/harness/scripts/jev-mesurer.mjs kit/options/jev/harness/tests/jev.test.mjs; do
   [[ -f "$piece" ]] || manque+="$piece"$'\n'
 done
 if [[ -z "$manque" ]]; then ok "les pièces attendues sont là"; else
@@ -225,6 +228,17 @@ if [[ "${appels_vibe:-0}" -ge 1 && "${mauvais_vibe:-1}" -eq 0 ]]; then
   ok "chaque appel du CLI de Mistral ($appels_vibe) borne ses outils par --enabled-tools"
 else
   rouge "appels du CLI de Mistral : ${appels_vibe:-0}, dont ${mauvais_vibe:-?} sans --enabled-tools ou avec une permission levée"
+fi
+
+# 1 ter. Jev (option jev) ne s'appelle que depuis lib/jev.mjs : un seul endroit envoie des findings
+# à ce service, et c'est là que tiennent les exclusions, les deux ordres et le silence sur la clé.
+LIB_JEV=kit/options/jev/harness/scripts/lib/jev.mjs
+ailleurs="$(grep -rnE 'v1/systemone|api\.typesafe\.ai' --include='*.sh' --include='*.mjs' kit \
+  | grep -v "^$LIB_JEV:" | grep -v '/harness/tests/' \
+  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(#|//|\*)' || true)"
+if [[ -z "$ailleurs" ]] && grep -q 'v1/systemone' "$LIB_JEV"; then ok "Jev n'est appelé que depuis lib/jev.mjs"; else
+  rouge "appel de Jev hors de lib/jev.mjs (ou lib/jev.mjs sans appel)"
+  detail "$ailleurs"
 fi
 
 # 2. Aucune vérification lancée dans un pipe : le code rendu serait celui de la dernière commande.

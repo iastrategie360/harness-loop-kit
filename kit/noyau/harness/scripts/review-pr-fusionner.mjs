@@ -17,13 +17,19 @@
 // artefact. Elle n'a pas de flux d'événements : la preuve d'une relecture menée au bout est
 // l'ATTESTATION que son producteur écrit après avoir validé chaque lot
 // (`{lots_total, lots_relus, exclus, fichiers}`). Sans attestation recevable, rien n'est écrit.
+//
+// Option `jev` (1.2.0), si elle est active et posée : AVANT la fusion, elle compare chaque finding
+// neuf aux findings connus du même fichier, et rattache à sa clé la reformulation d'un défaut
+// connu et non tranché (cf. harness/options/jev.md). Elle ne fait jamais échouer la fusion : au
+// moindre problème, elle le dit sur la sortie d'erreur et la fusion est celle de 1.1.0.
 // Codes : 0 artefact écrit (json puis md) ; 1 rien n'est écrit ; 64 usage.
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   parseSortieCodex, fusionner, findingsOuverts, genererMarkdown, libelleExtraction, preuvesDeLAttestation,
 } from "./lib/review-pr-artefact.mjs";
-import { ecrireJson, maintenant } from "./lib/config.mjs";
+import { ecrireJson, maintenant, chargerConfig, jevActive } from "./lib/config.mjs";
 
 function arg(nom, defaut = null) {
   const i = process.argv.indexOf(nom);
@@ -100,7 +106,32 @@ if (existsSync(cheminArtefact)) {
   }
 }
 
-const artefact = fusionner(ancien, findings, { headSha, date, modele, synthese, extraction, branche, base, source });
+// Le point de l'option jev. Configuration illisible ou sans la clé (1.1.0), option coupée : rien
+// n'est chargé, et la fusion reçoit les findings tels que le relecteur les a rendus.
+async function avecJev(nouveaux) {
+  let config;
+  try {
+    config = chargerConfig(racine);
+  } catch {
+    return nouveaux;
+  }
+  if (!jevActive(config)) return nouveaux;
+  const module = join(dirname(fileURLToPath(import.meta.url)), "jev-rattacher.mjs");
+  if (!existsSync(module)) {
+    console.error("option jev indisponible : jev-rattacher.mjs n'est pas posé (relancer /harness-install). Fusion sans rattachement.");
+    return nouveaux;
+  }
+  try {
+    const { rattacherPr } = await import(pathToFileURL(module).href);
+    return await rattacherPr({ racine, config, ancien, nouveaux, headSha, date, artefact: cheminArtefact });
+  } catch (e) {
+    console.error(`option jev indisponible : ${e?.message ?? e}. Fusion sans rattachement.`);
+    return nouveaux;
+  }
+}
+
+const aFusionner = await avecJev(findings);
+const artefact = fusionner(ancien, aFusionner, { headSha, date, modele, synthese, extraction, branche, base, source });
 const cheminMarkdown = cheminArtefact.replace(/\.json$/, ".md");
 mkdirSync(dirname(cheminArtefact), { recursive: true });
 ecrireJson(cheminArtefact, artefact);

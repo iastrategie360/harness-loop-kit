@@ -1,0 +1,29 @@
+{
+  "findings": [
+    {
+      "title": "La garde accepte une chaîne vide",
+      "body": "garde() rend True pour une chaîne vide : seule la valeur None est refusée, alors que la spec exige de refuser toute valeur vide.",
+      "priority": 1,
+      "file": "src/garde.py",
+      "line_start": 2,
+      "line_end": 2
+    },
+    {
+      "title": "Le message d'erreur ne nomme pas le champ",
+      "body": "Le refus lève une erreur sans dire quel champ est en cause.",
+      "priority": 2,
+      "file": "src/garde.py",
+      "line_start": 5,
+      "line_end": 6
+    },
+    {
+      "title": "Coquille dans le commentaire d'en-tête",
+      "body": "« valuer » au lieu de « valeur ».",
+      "priority": 3,
+      "file": "src/garde.py",
+      "line_start": 1,
+      "line_end": 1
+    }
+  ],
+  "overall_explanation": "Deux défauts bloquants dans la garde."
+}

@@ -32,6 +32,11 @@
     "liste_textes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
     "modele_mistral": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "description": "Nom du modèle tel que l'API le liste. Il part dans du JSON : aucun caractère de syntaxe." },
+    "modele_jev": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*-[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Nom de version EXACT du modèle (jev-1.14.0). Un alias (jev-latest) est refusé : les seuils mesurés ne se transposent pas d'une version à l'autre."
+    },
     "prix_modele": {
       "type": "object",
       "additionalProperties": false,
@@ -279,6 +284,21 @@
             },
             "ressources_exclusives": { "$ref": "#/$defs/liste_textes", "description": "Chemins qu'un seul chantier peut porter à la fois (migrations numérotées, documents transverses)." },
             "liens": { "$ref": "#/$defs/liste_textes", "description": "Fichiers ou dossiers non versionnés à relier dans le second arbre de travail (dépendances installées, fichiers d'environnement)." }
+          }
+        },
+        "jev": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Option arrivée en 1.2.0, donc NON requise : une configuration 1.1.0 sans cette clé reste valide, et le noyau s'y comporte comme en 1.1.0. seuil_bas doit rester strictement sous seuil_haut (contrôlé par lib/config.mjs).",
+          "required": ["actif", "accord_envoi_externe", "modele", "seuil_haut", "seuil_bas", "delai_ms", "fichier_cle"],
+          "properties": {
+            "actif": { "type": "boolean" },
+            "accord_envoi_externe": { "type": "boolean", "description": "Accord d'envoyer le titre et le corps des findings à TypeSafe AI (Jev). Distinct des autres accords : c'est un autre service." },
+            "modele": { "$ref": "#/$defs/modele_jev" },
+            "seuil_haut": { "type": "number", "minimum": 0.02, "maximum": 1, "description": "Score à partir duquel un finding neuf est une re-détection d'un finding connu." },
+            "seuil_bas": { "type": "number", "minimum": 0.01, "maximum": 0.99, "description": "Score à partir duquel le finding est douteux et signalé au superviseur. Sous ce seuil, il est neuf." },
+            "delai_ms": { "type": "integer", "minimum": 100, "maximum": 60000, "description": "Délai d'UN appel HTTP. Dépassé, l'option se tait pour ce round (comportement de 1.1.0)." },
+            "fichier_cle": { "type": "string", "minLength": 1, "description": "Fichier qui porte la clé quand TYPESAFE_API_KEY est absente. « ~/ » vaut le dossier personnel. Hors du dépôt." }
           }
         },
         "mistral": {

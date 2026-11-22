@@ -1,5 +1,5 @@
 {
-  "kit": { "version": "1.1.0", "schema_etat": 1 },
+  "kit": { "version": "1.2.0", "schema_etat": 1 },
   "projet": {
     "nom": "Mon projet",
     "description": "Une phrase : ce que fait le produit, et pour qui.",
@@ -100,6 +100,15 @@
         "delai_tranche_s": 900
       },
       "exclusions": ["**/*.md", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"]
+    },
+    "jev": {
+      "actif": false,
+      "accord_envoi_externe": false,
+      "modele": "jev-1.14.0",
+      "seuil_haut": 0.8,
+      "seuil_bas": 0.5,
+      "delai_ms": 8000,
+      "fichier_cle": "~/.config/typesafe/api_key"
     }
   }
 }

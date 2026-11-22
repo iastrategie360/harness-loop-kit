@@ -9,6 +9,7 @@
 # Usage : codex-diff-review.sh [sortie.md]
 # Sortie : par défaut harness/.travail/relecteur/diff-review-<branche>.md
 #          et <sortie>.findings.json : [{cle, titre, severite, fichier}] (P0 à P2 seulement)
+#          et, avec l'option jev, <sortie>.findings.corps.json : {cle: corps}
 # Codes : 0 aucun finding bloquant (ou aucun diff) ; 1 échec (rien d'exploitable) ;
 #         2 il reste au moins un finding P0 à P2 ; 5 le relecteur a écrit ; 64 usage.
 set -euo pipefail
@@ -48,6 +49,12 @@ if ((rc != 0)); then exit "$rc"; fi
 mkdir -p "$(dirname "$SORTIE")"
 cp "$BRUT" "$SORTIE"
 echo "review du diff écrite : $SORTIE"
+EXTRAIRE=(--brut "$BRUT" --jsonl "$BRUT.jsonl" --racine "$RACINE" --sortie "$SORTIE.findings.json")
+# Option jev (1.2.0) : le corps de chaque finding, à côté, pour la comparaison avec le registre.
+# Sans l'option (ou sans sa clé, configuration 1.1.0), l'appel est celui de 1.1.0.
+if [[ "$(cfg .options.jev.actif)" == "true" ]]; then
+  EXTRAIRE+=(--corps "$SORTIE.findings.corps.json")
+fi
 rc=0
-node "$SCRIPTS/review-extraire.mjs" --brut "$BRUT" --jsonl "$BRUT.jsonl" --racine "$RACINE" --sortie "$SORTIE.findings.json" || rc=$?
+node "$SCRIPTS/review-extraire.mjs" "${EXTRAIRE[@]}" || rc=$?
 exit "$rc"

@@ -170,6 +170,13 @@ registre garde son statut et le nombre de fois où il a survécu à un correctif
 mémoire, le relecteur reformule, le codeur réfute de nouveau, et chaque tour ressemble au
 premier.
 
+La clé a une faiblesse : le titre est écrit par le relecteur, et une reformulation la change.
+Le défaut reformulé passe pour neuf et sa persistance repart à zéro. Il faut donc quelqu'un pour
+reconnaître le même défaut sous un autre titre : le superviseur à la main, ou un modèle de
+décision (option `jev`), qui ne fait que rattacher une reformulation à un défaut encore ouvert.
+Le sens compte : rattacher garde le finding ouvert et pousse vers l'arbitre ; rattacher à un
+défaut déjà tranché le ferait taire, et ce geste-là reste humain.
+
 ### L'échelle
 
 Un finding qui survit n'est plus un défaut à corriger : c'est un **désaccord**, et continuer

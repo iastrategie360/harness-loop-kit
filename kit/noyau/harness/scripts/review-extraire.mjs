@@ -7,6 +7,10 @@
 // la review de travail à la review de PR.
 //
 // Usage : review-extraire.mjs --brut <fichier> [--jsonl <fichier>] [--racine <dossier>] --sortie <findings.json>
+//           [--corps <corps.json>]
+// `--corps` (option `jev`, 1.2.0) : écrit À CÔTÉ le corps de chaque finding retenu, indexé par sa
+// clé (`{cle: corps}`). Le fichier de findings garde sa forme fermée, celle que lit ledger-round ;
+// sans l'option, rien de plus n'est écrit.
 // Codes : 0 aucun finding bloquant ; 1 sortie non exploitable (rien n'est écrit) ;
 //         2 au moins un finding P0 à P2 ; 64 usage.
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
@@ -23,8 +27,9 @@ const cheminBrut = arg("--brut");
 const cheminJsonl = arg("--jsonl");
 const cheminSortie = arg("--sortie");
 const racine = arg("--racine") ?? "";
+const cheminCorps = arg("--corps");
 if (!cheminBrut || !cheminSortie) {
-  console.error("usage : review-extraire.mjs --brut <fichier> [--jsonl <fichier>] [--racine <dossier>] --sortie <findings.json>");
+  console.error("usage : review-extraire.mjs --brut <fichier> [--jsonl <fichier>] [--racine <dossier>] --sortie <findings.json> [--corps <corps.json>]");
   process.exit(64);
 }
 
@@ -41,6 +46,7 @@ if (!exploitable) {
 // Un finding de sévérité illisible est REGARDÉ, pas ignoré : il compte comme un P2.
 const RANG = { P0: 0, P1: 1, P2: 2 };
 const parCle = new Map();
+const corpsParCle = new Map();
 let mineurs = 0;
 for (const f of findings) {
   if (!SEVERITES_BLOQUANTES.includes(f.severity)) {
@@ -53,12 +59,14 @@ for (const f of findings) {
   // Deux findings de même clé dans une même review : on garde le plus grave.
   if (!deja || RANG[severite] < RANG[deja.severite]) {
     parCle.set(cle, { cle, titre: f.titre || "(sans titre)", severite, fichier: f.file || null });
+    corpsParCle.set(cle, f.corps ?? "");
   }
 }
 const bloquants = [...parCle.values()].sort((a, b) => RANG[a.severite] - RANG[b.severite] || a.cle.localeCompare(b.cle));
 
 mkdirSync(dirname(cheminSortie), { recursive: true });
 ecrireJson(cheminSortie, bloquants);
+if (cheminCorps) ecrireJson(cheminCorps, Object.fromEntries(bloquants.map((f) => [f.cle, corpsParCle.get(f.cle) ?? ""])));
 for (const f of bloquants) console.log(`  ${f.severite} ${f.fichier ?? "(fichier non précisé)"} : ${f.titre}`);
 console.log(
   `review-extraire : ${bloquants.length} finding(s) bloquant(s) P0 à P2, ${mineurs} mineur(s) écarté(s) ` +

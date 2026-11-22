@@ -59,6 +59,16 @@ function sentLeJeton(texte) {
   return false;
 }
 
+// ressembleAUnSecret(texte) : le motif reconnu (son libellé), ou null. Les mêmes motifs que pour
+// les permissions, exportés pour qu'un autre garde-fou (l'option jev, avant d'envoyer un
+// finding à un service tiers) les applique tels quels au lieu d'en tenir une copie qui dériverait.
+export function ressembleAUnSecret(texte) {
+  const t = String(texte ?? "");
+  const motif = MOTIFS_SECRET.find(([re]) => re.test(t));
+  if (motif) return motif[1];
+  return sentLeJeton(t) ? "longue suite qui ressemble à un jeton" : null;
+}
+
 // Programmes qui exécutent n'importe quoi : les autoriser sans limite revient à tout autoriser.
 const TROP_LARGES = ["bash", "sh", "zsh", "node", "python", "python3", "env", "eval", "sudo", "xargs", "npx", "ssh"];
 // Jamais autorisés d'avance, même avec des arguments : ils sortent du dépôt ou de la machine.
@@ -151,6 +161,13 @@ export function proposer(config) {
     allow.push(
       "Bash(bash harness/scripts/mistral-securite.sh:*)", "Bash(bash harness/scripts/mistral-arbitrer.sh:*)",
       "Bash(bash harness/scripts/mistral-trancher.sh:*)", "Bash(bash harness/scripts/mistral-preflight.sh:*)",
+    );
+  }
+  // Clé absente d'une configuration 1.1.0 : rien n'est ajouté.
+  if (config.options.jev?.actif) {
+    allow.push(
+      "Bash(node harness/scripts/jev-rattacher.mjs:*)", "Bash(node harness/scripts/jev-defaire.mjs:*)",
+      "Bash(node harness/scripts/jev-mesurer.mjs:*)",
     );
   }
   if (forge === "github") {

@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { depotJouet, commandeProuvee } from "./aide.mjs";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { depotJouet, commandeProuvee, ICI } from "./aide.mjs";
 
 test("valider : la configuration d'exemple passe", (t) => {
   const d = depotJouet();
@@ -77,4 +79,44 @@ test("prouver : une commande statique se désigne par son nom", (t) => {
   const r = d.lancer("lib/config.mjs", ["prouver", "statique:lint", "--exit", "0", "--duree", "3"]);
   assert.equal(r.code, 0, r.erreur);
   assert.equal(d.config().commandes.statique[0].prouvee_le, "2030-01-15");
+});
+
+// Option jev (1.2.0) : sa clé n'est pas requise, et ses seuils se contrôlent ensemble.
+test("valider : la configuration d'exemple de 1.1.0, sans clé options.jev, reste valide", (t) => {
+  const ancienne = JSON.parse(readFileSync(join(ICI, "fixtures", "config", "projet-1.1.0.json"), "utf8"));
+  assert.equal(ancienne.kit.version, "1.1.0", "la fixture est bien celle de 1.1.0");
+  assert.equal(Object.hasOwn(ancienne.options, "jev"), false);
+  const d = depotJouet({ config: (c) => { for (const k of Object.keys(c)) delete c[k]; Object.assign(c, ancienne); } });
+  t.after(d.detruire);
+  const r = d.lancer("lib/config.mjs", ["valider"]);
+  assert.equal(r.code, 0, r.erreur);
+  assert.equal(d.lancer("lib/config.mjs", ["options"]).sortie, "");
+});
+
+test("valider : des seuils jev égaux, inversés ou hors bornes, et un alias de modèle, sont refusés", (t) => {
+  const cas = [
+    [(j) => { j.seuil_bas = 0.8; j.seuil_haut = 0.8; }, /\/options\/jev\/seuil_bas : doit être strictement inférieur à seuil_haut/],
+    [(j) => { j.seuil_bas = 0.9; j.seuil_haut = 0.6; }, /\/options\/jev\/seuil_bas : doit être strictement inférieur/],
+    [(j) => { j.seuil_bas = 0; }, /\/options\/jev\/seuil_bas/],
+    [(j) => { j.seuil_haut = 1.2; }, /\/options\/jev\/seuil_haut/],
+    [(j) => { j.modele = "jev-latest"; }, /\/options\/jev\/modele/],
+    [(j) => { j.delai_ms = 0; }, /\/options\/jev\/delai_ms/],
+    [(j) => { j.inconnue = 1; }, /\/options\/jev\/inconnue/],
+  ];
+  for (const [modifier, attendu] of cas) {
+    const d = depotJouet({ config: (c) => modifier(c.options.jev) });
+    t.after(d.detruire);
+    const r = d.lancer("lib/config.mjs", ["valider"]);
+    assert.equal(r.code, 1, `accepté à tort : ${JSON.stringify(d.config().options.jev)}`);
+    assert.match(r.erreur, attendu);
+  }
+  const ok = depotJouet({ config: (c) => { c.options.jev.seuil_bas = 0.6; c.options.jev.seuil_haut = 0.61; } });
+  t.after(ok.detruire);
+  assert.equal(ok.lancer("lib/config.mjs", ["valider"]).code, 0);
+});
+
+test("la fixture 1.1.0 est la configuration d'exemple de 1.1.0, recopiée sans retouche", () => {
+  const texte = readFileSync(join(ICI, "fixtures", "config", "projet-1.1.0.json"), "utf8");
+  assert.match(texte, /"version": "1\.1\.0"/);
+  assert.doesNotMatch(texte, /"jev"/);
 });
