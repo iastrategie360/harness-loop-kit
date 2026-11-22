@@ -186,7 +186,10 @@ comme neuve** : elle reprend sa propre clé, ouverte, persistance à zéro, et b
 finding neuf. Le connu perd la persistance que le rattachement lui avait ajoutée. Son statut ne
 bouge pas : s'il avait été rouvert par le rattachement, il reste ouvert (rien ne se ferme seul :
 pose toi-même `corrige` après vérification). Le rattachement n'est pas effacé, il est marqué
-défait, avec la note.
+défait, avec la note. Une même reformulation rattachée à plusieurs rounds se défait d'un seul
+geste : toutes ses traces, et la plus récente donne ce qui est rouvert. Au stage CODE, un connu
+remis à zéro depuis (absent d'un round, donc tenu pour corrigé) ne perd pas la persistance gagnée
+après : la trace porte alors `remis_a_zero`.
 
 ```bash
 node harness/scripts/jev-defaire.mjs pr <id> <clé du connu> <clé source> --note "<qui, pourquoi>"

@@ -164,6 +164,27 @@ function lireJsonOuRefus(chemin, quoi) {
   }
 }
 
+// Un connu OUVERT absent du round est tenu pour corrigé par ledger-round, et sa persistance repart
+// à zéro : ce qu'un rattachement plus ancien lui avait ajouté n'y est plus. On le note sur la
+// trace (`remis_a_zero`), pour que défaire ne retire pas une persistance gagnée après.
+function marquerRemises(rattachements, clesFinales, ledger, round) {
+  return rattachements.map((r) => (
+    !r.defait && r.remis_a_zero === undefined && !clesFinales.has(r.cle_cible) && ledger.findings[r.cle_cible]?.statut === "ouvert"
+      ? { ...r, remis_a_zero: round }
+      : r));
+}
+
+function ecrireExtension(racine, id, jev) {
+  const patch = join(racine, "harness", ".travail", "jev", `patch-${id}.json`);
+  mkdirSync(dirname(patch), { recursive: true });
+  writeFileSync(patch, JSON.stringify({ extensions: { jev } }));
+  try {
+    etat(["ecrire", id, "--patch-fichier", patch], { lecture: false });
+  } catch (err) {
+    throw new ErreurConfig(`état non écrit : ${String(err.stderr ?? err.message).trim()}`);
+  }
+}
+
 async function code(racine, config, id, cheminFindings, cheminCorps) {
   if (!reglagesJev(config)) {
     console.log("option jev inactive : le fichier de findings est laissé tel quel");
@@ -208,6 +229,9 @@ async function code(racine, config, id, cheminFindings, cheminCorps) {
     dire(err.message);
     historique(id, `option jev indisponible : ${err.message} (round ${round} : aucun rattachement)`);
     journaliser(racine, [{ date, registre: "code", cible: id, action: "indisponible", round, motif: err.message }]);
+    const avant = ext.rattachements ?? [];
+    const apres = marquerRemises(avant, clesPresentes, ledger, round);
+    if (JSON.stringify(apres) !== JSON.stringify(avant)) ecrireExtension(racine, id, { ...ext, rattachements: apres });
     return 0;
   }
 
@@ -239,18 +263,14 @@ async function code(racine, config, id, cheminFindings, cheminCorps) {
   }));
   const jev = {
     corps,
-    rattachements: [...(ext.rattachements ?? []), ...nouveauxRattachements],
+    rattachements: [
+      ...marquerRemises(ext.rattachements ?? [], new Set(presents.map((f) => parSource.get(f.cle)?.cible.cle ?? f.cle)), ledger, round),
+      ...nouveauxRattachements,
+    ],
     signalements: [...(ext.signalements ?? []), ...nouveauxSignalements],
   };
   if (JSON.stringify(jev) !== JSON.stringify({ corps: ext.corps ?? {}, rattachements: ext.rattachements ?? [], signalements: ext.signalements ?? [] })) {
-    const patch = join(racine, "harness", ".travail", "jev", `patch-${id}.json`);
-    mkdirSync(dirname(patch), { recursive: true });
-    writeFileSync(patch, JSON.stringify({ extensions: { jev } }));
-    try {
-      etat(["ecrire", id, "--patch-fichier", patch], { lecture: false });
-    } catch (err) {
-      throw new ErreurConfig(`état non écrit : ${String(err.stderr ?? err.message).trim()}`);
-    }
+    ecrireExtension(racine, id, jev);
   }
   const entrees = [];
   for (const r of nouveauxRattachements) {

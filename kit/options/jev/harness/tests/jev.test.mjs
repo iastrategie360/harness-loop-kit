@@ -494,6 +494,14 @@ async function scenarioFixtures(d, env) {
   return sorties;
 }
 
+// Après une panne, aucun rattachement : la reformulation entre comme neuve, à côté des connus.
+function memeQue110Partiel(d, n) {
+  const a = artefact(d);
+  assert.equal(Object.hasOwn(a.findings, cle(A2)), true);
+  assert.equal(Object.values(a.findings).some((f) => f.rattachements), false);
+  assert.equal(Object.keys(a.findings).length, n + 1);
+}
+
 function memeQue110(d) {
   assert.equal(d.lire(...ARTEFACT), GOLDEN.json(), "l'artefact est octet pour octet celui de 1.1.0");
   assert.equal(d.lire("specs", "001-jouet", "review-pr.md"), GOLDEN.md());
@@ -523,6 +531,20 @@ describe("fail-open bruyant : une panne donne exactement 1.1.0, et le dit", () =
       if (nom === "HTTP 500") assert.equal(s.recus.length, 6, "trois essais par ordre");
     });
   }
+
+  test("une panne arrête la file : aucune paire neuve ne part après le premier échec", async (t) => {
+    // Douze findings connus dans le même fichier, une paire chacun : la première réponse est un refus.
+    const s = await fauxJev(async (corps, n) => (n === 1 ? { status: 401, corps: { error: { type: "unauthorized" } } } : { delai: 100, corps: reponse(0.1) }));
+    const d = chantier();
+    t.after(async () => { await s.fermer(); d.detruire(); });
+    const env = envJev(d, s);
+    const connus = Array.from({ length: 12 }, (_, i) => finding(`Défaut connu ${i}`, { p: 2 }));
+    await okFusion(d, env, connus, 1);
+    const r = await okFusion(d, env, [finding(A2)], 2);
+    assert.match(r.erreur, /option jev indisponible : HTTP 401/);
+    assert.ok(s.recus.length <= 8, `${s.recus.length} requêtes : la file ne s'est pas arrêtée`);
+    memeQue110Partiel(d, connus.length);
+  });
 
   test("429 puis réponse : le nouvel essai aboutit", async (t) => {
     const table = parTitres({ [`${A}|${A2}`]: 0.9 });
@@ -687,6 +709,24 @@ describe("défaire un rattachement : rouvrir comme neuf", () => {
     assert.equal(e.extensions.jev.rattachements.length, 2);
     assert.equal(e.extensions.jev.rattachements.every((x) => x.defait?.note === "deux défauts distincts"), true);
     assert.ok(e.historique.some((h) => /rattachement défait/.test(h.note)));
+  });
+
+  test("stage CODE : défaire après une remise à zéro ne retire pas la persistance gagnée depuis", async (t) => {
+    const s = await fauxJev(parTitres({ [`${A}|${A2}`]: 0.9 }));
+    const d = chantier();
+    t.after(async () => { await s.fermer(); d.detruire(); });
+    storyEnCode(d);
+    const env = envJev(d, s);
+    await roundCode(d, env, 1, [{ titre: A }]);
+    await roundCode(d, env, 2, [{ titre: A2 }]);
+    await roundCode(d, env, 3, []);
+    assert.equal(etatDe(d).extensions.jev.rattachements[0].remis_a_zero, 3, "le connu absent du round est remis à zéro");
+    await roundCode(d, env, 4, [{ titre: A }]);
+    await roundCode(d, env, 5, [{ titre: A }]);
+    assert.equal(etatDe(d).review_ledger.code.findings[cle(A)].survived, 2);
+    const r = d.lancer("jev-defaire.mjs", ["code", "001-jouet", cle(A), cle(A2), "--note", "deux défauts distincts"]);
+    assert.equal(r.code, 0, r.erreur);
+    assert.equal(etatDe(d).review_ledger.code.findings[cle(A)].survived, 2, "la persistance d'après la remise à zéro reste");
   });
 });
 

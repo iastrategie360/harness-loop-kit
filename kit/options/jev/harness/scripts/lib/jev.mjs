@@ -235,16 +235,26 @@ export function refusEnvoi(f, exclus) {
 
 // --- La décision ----------------------------------------------------------------------------
 
+// Au premier échec, plus aucune paire neuve ne part (un résultat partiel ne sert à rien : l'appelant
+// ne rattache alors rien) ; on attend celles déjà en vol, puis l'échec remonte.
 async function parLots(taches, n) {
   const resultats = new Array(taches.length);
   let i = 0;
+  let arret = false;
   async function ouvrier() {
-    while (i < taches.length) {
+    while (i < taches.length && !arret) {
       const k = i++;
-      resultats[k] = await taches[k]();
+      try {
+        resultats[k] = await taches[k]();
+      } catch (e) {
+        arret = true;
+        throw e;
+      }
     }
   }
-  await Promise.all(Array.from({ length: Math.min(n, taches.length) }, ouvrier));
+  const issues = await Promise.allSettled(Array.from({ length: Math.min(n, taches.length) }, ouvrier));
+  const echec = issues.find((x) => x.status === "rejected");
+  if (echec) throw echec.reason;
   return resultats;
 }
 

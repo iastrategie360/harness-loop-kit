@@ -57,7 +57,9 @@ function defaireCode(racine, id, cible, source, note) {
   if (!connu) refuser(`« ${cible} » n'est pas dans le registre`);
   const date = maintenant();
   const rattachements = liste.map((x, k) => (indices.has(k) ? { ...x, defait: { date, note } } : x));
-  const survived = Math.max(0, connu.survived - actifs.length);
+  // Seuls comptent les rattachements dont la persistance est encore là : un connu remis à zéro
+  // depuis (marque `remis_a_zero`, posée par jev-rattacher) ne leur doit plus rien.
+  const survived = Math.max(0, connu.survived - actifs.filter(([x]) => x.remis_a_zero === undefined).length);
   const patch = {
     review_ledger: {
       code: {
