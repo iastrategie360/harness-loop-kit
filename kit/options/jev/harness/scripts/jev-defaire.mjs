@@ -52,7 +52,9 @@ function defaireCode(racine, id, cible, source, note) {
   const r = actifs.at(-1)[0];
   const indices = new Set(actifs.map(([, k]) => k));
   if (ledger.rounds < r.round) refuser(`le round ${r.round} qui a rattaché n'est pas encore passé par ledger-round : rien à défaire dans le registre`);
-  if (Object.hasOwn(ledger.findings, source)) refuser(`« ${source} » est déjà dans le registre : il n'y a rien à rouvrir`);
+  // La source a pu revenir d'elle-même sous sa clé à un round suivant : elle est alors gardée telle
+  // quelle, seul le connu est corrigé.
+  const dejaLa = Object.hasOwn(ledger.findings, source);
   const connu = ledger.findings[cible];
   if (!connu) refuser(`« ${cible} » n'est pas dans le registre`);
   const date = maintenant();
@@ -69,14 +71,14 @@ function defaireCode(racine, id, cible, source, note) {
   // Les corps gardés pour la comparaison : la source garde le dernier, le connu retrouve le sien.
   const corpsRendus = {};
   if (Object.hasOwn(actifs[0][0], "corps_avant") && (jev.corps ?? {})[cible] === r.corps) {
-    corpsRendus[source] = r.corps;
+    if (!dejaLa) corpsRendus[source] = r.corps;
     corpsRendus[cible] = actifs[0][0].corps_avant;
   }
   const patch = {
     review_ledger: {
       code: {
         findings: {
-          [source]: { titre: r.titre, severite: r.severite, fichier: r.fichier, survived: 0, escalation: null, statut: "ouvert" },
+          ...(dejaLa ? {} : { [source]: { titre: r.titre, severite: r.severite, fichier: r.fichier, survived: 0, escalation: null, statut: "ouvert" } }),
           [cible]: { survived },
         },
       },
@@ -107,12 +109,12 @@ function defairePr(racine, config, cibleArg, cible, source, note) {
   const liste = connu.rattachements ?? [];
   const actifs = liste.map((x, k) => [x, k]).filter(([x]) => x.cle_source === source && !x.defait);
   if (actifs.length === 0) refuser(`aucun rattachement actif de « ${source} » sur « ${cible} »`);
-  if (Object.hasOwn(artefact.findings, source)) refuser(`« ${source} » est déjà dans l'artefact : il n'y a rien à rouvrir`);
+  const dejaLa = Object.hasOwn(artefact.findings, source);
   const r = actifs.at(-1)[0];
   const indices = new Set(actifs.map(([, k]) => k));
   const ajoute = actifs.reduce((n, [x]) => n + (x.survived_ajoute ?? 0), 0);
   const date = maintenant();
-  artefact.findings[source] = {
+  if (!dejaLa) artefact.findings[source] = {
     severity: r.severity,
     file: r.file,
     lines: r.lines,

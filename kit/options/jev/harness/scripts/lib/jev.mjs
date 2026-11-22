@@ -79,7 +79,8 @@ function deplier(chemin, env) {
 export function lireCle(reglages, racine, env = process.env) {
   const parEnv = String(env.TYPESAFE_API_KEY ?? "").trim();
   if (parEnv !== "") return parEnv;
-  const chemin = resolve(deplier(reglages.fichier_cle, env));
+  // Un chemin relatif se lit depuis la racine du dépôt, jamais depuis le dossier courant.
+  const chemin = resolve(racine ?? ".", deplier(reglages.fichier_cle, env));
   if (racine) {
     let reel = chemin;
     try {
@@ -90,7 +91,8 @@ export function lireCle(reglages, racine, env = process.env) {
       depot = realpathSync(racine);
     } catch { /* racine introuvable : rien à comparer */ }
     const rel = relative(depot, reel);
-    if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) {
+    const dehors = rel === ".." || rel.startsWith("../") || isAbsolute(rel);
+    if (!dehors) {
       throw new JevIndisponible("le fichier de clé (options.jev.fichier_cle) est dans le dépôt : il partirait avec lui, il n'est pas lu");
     }
   }

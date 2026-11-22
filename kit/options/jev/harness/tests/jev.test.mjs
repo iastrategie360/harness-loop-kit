@@ -596,6 +596,13 @@ describe("fail-open bruyant : une panne donne exactement 1.1.0, et le dit", () =
     const r = await scenarioFixtures(dedans, envJev(dedans, s, { TYPESAFE_API_KEY: "", HOME: dedans.racine }));
     memeQue110(dedans);
     assert.match(r[1].erreur, /le fichier de clé \(options\.jev\.fichier_cle\) est dans le dépôt/);
+    // Un nom qui COMMENCE par deux points reste dans le dépôt.
+    const pointe = chantier({ config: (c) => { c.options.jev.fichier_cle = "..cles/typesafe"; } });
+    t.after(pointe.detruire);
+    pointe.ecrire("..cles/typesafe", "pas-une-vraie-cle\n");
+    const r2 = await scenarioFixtures(pointe, envJev(pointe, s, { TYPESAFE_API_KEY: "", HOME: pointe.racine }));
+    memeQue110(pointe);
+    assert.match(r2[1].erreur, /est dans le dépôt/);
   });
 });
 
@@ -691,6 +698,28 @@ describe("défaire un rattachement : rouvrir comme neuf", () => {
     assert.equal(a.synthese.open_p0_p2, 2);
     assert.match(d.lire("specs", "001-jouet", "review-pr.md"), /défait le/);
     assert.equal(d.lancer("jev-defaire.mjs", ["pr", "001-jouet", cle(A), cle(A2), "--note", "encore"]).code, 1, "un rattachement se défait une fois");
+  });
+
+  test("défaire quand la source est revenue d'elle-même sous sa clé : elle est gardée, le connu est corrigé", async (t) => {
+    const s = await fauxJev(parTitres({ [`${A}|${A2}`]: 0.9 }));
+    const d = chantier();
+    t.after(async () => { await s.fermer(); d.detruire(); });
+    const env = envJev(d, s);
+    await okFusion(d, env, [finding(A)], 1);
+    await okFusion(d, env, [finding(A2)], 2);
+    await okFusion(d, env, [finding(A), finding(A2)], 3);
+    const avant = artefact(d).findings[cle(A2)];
+    assert.equal(d.lancer("jev-defaire.mjs", ["pr", "001-jouet", cle(A), cle(A2), "--note", "distincts"]).code, 0);
+    const a = artefact(d);
+    assert.deepEqual(a.findings[cle(A2)], avant, "la source déjà présente n'est pas réécrite");
+    assert.equal(a.findings[cle(A)].survived, 1, "le connu perd la persistance du rattachement");
+    storyEnCode(d);
+    await roundCode(d, env, 1, [{ titre: A }]);
+    await roundCode(d, env, 2, [{ titre: A2 }]);
+    await roundCode(d, env, 3, [{ titre: A }, { titre: A2 }]);
+    assert.equal(d.lancer("jev-defaire.mjs", ["code", "001-jouet", cle(A), cle(A2), "--note", "distincts"]).code, 0);
+    assert.equal(etatDe(d).review_ledger.code.findings[cle(A)].survived, 1);
+    assert.equal(etatDe(d).review_ledger.code.findings[cle(A2)].survived, 0);
   });
 
   test("stage CODE : la reformulation entre au registre, ouverte, et le connu perd un round", async (t) => {
