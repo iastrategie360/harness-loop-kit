@@ -22,9 +22,10 @@
 // Codes : 0 fait ; 1 refus ou échec ; 64 usage.
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { chargerConfig, trouverRacine, ecrireJson, ErreurConfig } from "./lib/config.mjs";
-import { JevIndisponible, preparer, scorer, fichiersExclus, refusEnvoi } from "./lib/jev.mjs";
+import { JevIndisponible, preparer, scorer, fichiersExclus, refusEnvoi, QUESTION } from "./lib/jev.mjs";
 
 const SEUILS_DEFAUT = [0.5, 0.6, 0.7, 0.8, 0.9];
 
@@ -104,14 +105,26 @@ async function interroger(racine, config, cheminPaires, cheminScores, modele) {
   // La mesure se fait AVANT d'activer l'option : seul l'accord d'envoi est exigé, pas `actif`.
   if (!config.options.jev) throw new ErreurConfig("options.jev absente de harness/projet.json : recopier le bloc de projet.exemple.json");
   const configMesure = { ...config, options: { ...config.options, jev: { ...config.options.jev, actif: true, ...(modele ? { modele } : {}) } } };
-  const { demander } = preparer(configMesure, racine);
-  const file = paires.filter((p) => !deja[p.id]);
+  const { reglages, demander } = preparer(configMesure, racine);
+  // Les exclusions se rejouent ICI, au moment d'envoyer : le fichier de paires a pu être produit
+  // avec d'autres chemins exclus, ou retouché à la main.
+  const exclus = fichiersExclus(racine, paires.map((p) => p.fichier));
+  const envoyables = paires.filter(
+    (p) => !refusEnvoi({ ...p.a, fichier: p.fichier }, exclus) && !refusEnvoi({ ...p.b, fichier: p.fichier }, exclus),
+  );
+  const refusees = paires.length - envoyables.length;
+  // Un score déjà noté ne se reprend que pour le même contexte : même modèle demandé, même
+  // question, mêmes textes. Sinon la paire est reposée, jamais un ancien score recyclé.
+  const empreinte = (p) => createHash("sha256")
+    .update(JSON.stringify([reglages.modele, QUESTION, p.a.titre, p.a.corps, p.b.titre, p.b.corps]))
+    .digest("hex");
+  const file = envoyables.filter((p) => deja[p.id]?.empreinte !== empreinte(p));
   let fait = 0;
   async function ouvrier() {
     while (file.length > 0) {
       const p = file.shift();
       const s = await scorer(demander, { titre: p.a.titre, corps: p.a.corps }, { titre: p.b.titre, corps: p.b.corps });
-      deja[p.id] = { score: s.score, ab: s.ab, ba: s.ba, modele: s.modele, artefact_de_review: p.artefact_de_review };
+      deja[p.id] = { score: s.score, ab: s.ab, ba: s.ba, modele: s.modele, modele_demande: reglages.modele, empreinte: empreinte(p), artefact_de_review: p.artefact_de_review };
       fait += 1;
       if (fait % 20 === 0) ecrireJson(cheminScores, deja);
     }
@@ -121,7 +134,9 @@ async function interroger(racine, config, cheminPaires, cheminScores, modele) {
   } finally {
     ecrireJson(cheminScores, deja);
   }
-  console.log(`paires notées : ${Object.keys(deja).length} (dont ${fait} à ce passage) -> ${cheminScores}`);
+  for (const p of paires.filter((x) => !envoyables.includes(x))) delete deja[p.id];
+  ecrireJson(cheminScores, deja);
+  console.log(`paires notées : ${Object.keys(deja).length} (dont ${fait} à ce passage), ${refusees} refusée(s) à l'envoi (chemin exclu ou motif de secret) -> ${cheminScores}`);
   return 0;
 }
 

@@ -716,6 +716,21 @@ describe("jev-mesurer : re-mesurer les seuils", () => {
     assert.equal(encore.code, 0);
     assert.equal(s.recus.length, liste.length * 2, "une paire déjà notée n'est pas reposée");
 
+    // Un autre modèle demandé : rien n'est recyclé, chaque paire est reposée.
+    const autre = await lancer(d, "jev-mesurer.mjs", ["interroger", "--paires", paires, "--scores", scores, "--modele", "jev-1.15.0"], env);
+    assert.equal(autre.code, 0, autre.erreur);
+    assert.equal(s.recus.length, liste.length * 4, "un autre modèle repose toutes les paires");
+    assert.equal(s.recus.at(-1).corps.model, "jev-1.15.0");
+    assert.equal(lireJson(scores)[idAA2].modele_demande, "jev-1.15.0");
+
+    // Les exclusions se rejouent à l'envoi : un chemin exclu APRÈS la construction des paires ne part pas.
+    d.reconfigurer((c) => { c.relecteur.chemins_exclus = ["prive/", "src/"]; });
+    const exclu = await lancer(d, "jev-mesurer.mjs", ["interroger", "--paires", paires, "--scores", d.chemin("harness", ".travail", "scores-2.json")], env);
+    assert.equal(exclu.code, 0, exclu.erreur);
+    assert.equal(s.recus.length, liste.length * 4 + 2, "seule la paire hors de src/ est posée");
+    assert.match(exclu.sortie, /4 refusée\(s\) à l'envoi/);
+    d.reconfigurer((c) => { c.relecteur.chemins_exclus = ["prive/"]; });
+
     const idAB = liste.find((x) => x.a.titre === A && x.b.titre === B).id;
     const idBruit = liste.find((x) => x.artefact_de_review).id;
     const etiquettes = d.ecrire("harness/.travail/etiquettes.json", JSON.stringify({ [idAA2]: "meme", [idAB]: "different", [idBruit]: "meme" }));
